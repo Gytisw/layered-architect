@@ -1,0 +1,101 @@
+version: "1"
+
+constraints:
+  - id: CON-001
+    layer: L1
+    text: "Process 50,000 requests/second per gateway instance"
+    type: performance
+    validates_against: [L2-load-balancer, L3-connection-pool, L4-benchmarks]
+    
+  - id: CON-002
+    layer: L1
+    text: "Add < 10ms latency at p99 for routing decisions"
+    type: performance
+    validates_against: [L2-route-matching, L3-radix-tree, L4-latency-tests]
+    
+  - id: CON-003
+    layer: L1
+    text: "Support 100,000 concurrent WebSocket connections"
+    type: performance
+    validates_against: [L2-websocket-support, L3-connection-manager, L4-load-tests]
+    
+  - id: CON-004
+    layer: L1
+    text: "Cache hit ratio > 80% for idempotent requests"
+    type: performance
+    validates_against: [L2-cache-layer, L3-cache-strategy, L4-monitoring]
+    
+  - id: CON-005
+    layer: L1
+    text: "OAuth 2.0 / OIDC authentication with JWT validation"
+    type: security
+    validates_against: [L2-auth-service, L3-jwt-validator, L4-security-tests]
+    
+  - id: CON-006
+    layer: L1
+    text: "mTLS for all inter-service communication"
+    type: security
+    validates_against: [L2-mtls-config, L3-certificate-manager, L4-tls-config]
+    
+  - id: CON-007
+    layer: L1
+    text: "WAF rules protecting against OWASP Top 10"
+    type: security
+    validates_against: [L2-waf-integration, L3-waf-rules, L4-penetration-tests]
+    
+  - id: CON-008
+    layer: L1
+    text: "DDoS protection: automatic rate limiting and IP blocking"
+    type: security
+    validates_against: [L2-rate-limiter, L3-ddos-protection, L4-automation]
+    
+  - id: CON-009
+    layer: L1
+    text: "API key rotation every 90 days"
+    type: security
+    validates_against: [L2-key-management, L3-key-rotation, L4-ops-runbook]
+    
+  - id: CON-010
+    layer: L1
+    text: "Horizontal scaling to 100+ gateway instances"
+    type: scalability
+    validates_against: [L2-clustering, L3-stateless-design, L4-k8s-hpa]
+    
+  - id: CON-011
+    layer: L1
+    text: "Support 500+ backend services"
+    type: scalability
+    validates_against: [L2-service-registry, L3-service-discovery, L4-consul-config]
+    
+  - id: CON-012
+    layer: L1
+    text: "Hot-reload configuration without restarts"
+    type: scalability
+    validates_against: [L2-config-store, L3-config-watcher, L4-zero-downtime]
+    
+  - id: CON-013
+    layer: L1
+    text: "Zero-downtime deployments with blue-green strategy"
+    type: scalability
+    validates_against: [L2-deployment-strategy, L3-health-checks, L4-k8s-deploy]
+
+validation_rules:
+  - rule: "L1 constraints must have corresponding L2 subsystem designs"
+    check: "All L1 constraints must map to at least one L2 component"
+    
+  - rule: "L2 subsystems must have component designs in L3"
+    check: "All L2 subsystems must have detailed component specifications"
+    
+  - rule: "L3 components must have implementation details in L4"
+    check: "All L3 modules must have corresponding code patterns or file structures"
+
+traceability:
+  CON-001:
+    L2: [gateway-cluster, connection-pool]
+    L3: [worker-threads, connection-reuse]
+    L4: [benchmark-suite, performance-tests]
+    
+  CON-005:
+    L2: [auth-layer, jwt-validation]
+    L3: [token-cache, claims-validator]
+    L4: [jwt-middleware, auth-tests]

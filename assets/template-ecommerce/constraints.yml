@@ -1,0 +1,85 @@
+version: "1"
+
+constraints:
+  - id: CON-001
+    layer: L1
+    text: "Support 10,000 concurrent users with < 200ms p95 response time"
+    type: performance
+    validates_against: [L2-subsystem-capacity, L3-caching-strategy, L4-load-testing]
+    
+  - id: CON-002
+    layer: L1
+    text: "Product catalog search results in < 100ms for 100K+ products"
+    type: performance
+    validates_against: [L2-search-engine, L3-elasticsearch-indexing, L4-query-optimization]
+    
+  - id: CON-003
+    layer: L1
+    text: "Payment processing completes in < 3 seconds end-to-end"
+    type: performance
+    validates_against: [L2-payment-gateway, L3-payment-orchestration, L4-timeout-handling]
+    
+  - id: CON-004
+    layer: L1
+    text: "PCI-DSS Level 1 compliance for payment data"
+    type: security
+    validates_against: [L2-data-encryption, L3-tokenization, L4-security-audit]
+    
+  - id: CON-005
+    layer: L1
+    text: "All customer data encrypted at rest and in transit"
+    type: security
+    validates_against: [L2-encryption, L3-field-level-encryption, L4-tls-configuration]
+    
+  - id: CON-006
+    layer: L1
+    text: "Authentication with MFA support for admin users"
+    type: security
+    validates_against: [L2-identity-provider, L3-mfa-module, L4-auth-middleware]
+    
+  - id: CON-007
+    layer: L1
+    text: "Rate limiting: 100 requests/minute per IP, 1000 requests/minute per authenticated user"
+    type: security
+    validates_against: [L2-api-gateway, L3-rate-limiter, L4-middleware-implementation]
+    
+  - id: CON-008
+    layer: L1
+    text: "Horizontal scaling to support 10x traffic spikes during sales events"
+    type: scalability
+    validates_against: [L2-auto-scaling, L3-stateless-services, L4-hpa-configuration]
+    
+  - id: CON-009
+    layer: L1
+    text: "Database support for 1 million products and 10 million orders"
+    type: scalability
+    validates_against: [L2-database-design, L3-sharding-strategy, L4-partitioning]
+    
+  - id: CON-010
+    layer: L1
+    text: "Multi-tenant architecture supporting 50,000+ merchants"
+    type: scalability
+    validates_against: [L2-tenant-isolation, L3-row-level-security, L4-tenant-middleware]
+
+# Cross-layer validation rules
+validation_rules:
+  - rule: "L1 constraints must have corresponding L2 subsystem designs"
+    check: "All L1 constraints must map to at least one L2 component"
+    
+  - rule: "L2 subsystems must have component designs in L3"
+    check: "All L2 subsystems must have detailed component specifications"
+    
+  - rule: "L3 components must have implementation details in L4"
+    check: "All L3 modules must have corresponding code patterns or file structures"
+
+# Traceability matrix
+traceability:
+  CON-001:
+    L2: [api-gateway-capacity, caching-layer]
+    L3: [redis-cache-module, load-balancer-config]
+    L4: [k8s-hpa, load-test-suite]
+    
+  CON-004:
+    L2: [payment-gateway-isolation, data-vault]
+    L3: [token-vault-module, encryption-service]
+    L4: [pci-compliance-checks, security-scan-pipeline]

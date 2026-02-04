@@ -1,0 +1,1484 @@
+#!/usr/bin/env python3
+"""
+Comprehensive unit tests for layered-architecture scripts.
+
+Test Classes:
+1. TestInitArchitecture - Tests project creation, file generation, error handling
+2. TestValidateLayer - Tests L1-L4 validation, warning output, soft gate behavior
+3. TestCheckConstraints - Tests constraint loading, collision detection, circular dependency detection
+4. TestCheckpointManager - Tests save/load, state detection, missing file handling
+5. TestDependencyGraph - Tests DOT output, cycle detection, --check flag
+6. TestConstraintAdd - Tests constraint validation, duplicate detection, ID generation
+7. TestLintArchitecture - Tests markdown checks, constraint reference validation, anti-pattern detection
+"""
+
+import os
+import re
+import sys
+import yaml
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+from io import StringIO
+
+# Add scripts directory to path
+SCRIPTS_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+# Import modules to test
+import init_architecture
+import validate_layer
+import checkpoint_manager
+import dependency_graph
+import constraint_add
+import lint_architecture
+from check_constraints import ConstraintChecker, Constraint, Component
+
+
+# =============================================================================
+# Test Fixtures
+# =============================================================================
+
+
+class TestFixtures:
+    """Test fixtures and sample data for all test classes."""
+
+    @staticmethod
+    def get_valid_l1_content():
+        return """# Vision
+
+## Vision
+Our system provides fast, reliable service to users.
+
+## Constraints
+- Constraint: Response time < 200ms
+- Constraint: 99.9% uptime required
+- Constraint: Support 1000 concurrent users
+- Constraint: Data must be encrypted at rest
+- Constraint: API must be RESTful
+
+## Principles
+1. Performance first
+2. Security by design
+3. Scalability built-in
+
+## Success Criteria
+- Handle 10,000 requests/second
+- 99.99% availability
+"""
+
+    @staticmethod
+    def get_valid_l2_content():
+        return """# Architecture
+
+## Subsystems
+- Auth Service: Handles authentication
+- User Service: Manages user data
+
+## Boundaries
+- API Gateway boundary
+- Database boundary
+
+## Data Flow
+1. Client -> API Gateway
+2. API Gateway -> Services
+3. Services -> Database
+
+## Interfaces
+- REST API
+- GraphQL endpoint
+"""
+
+    @staticmethod
+    def get_valid_l3_content():
+        return """# Components
+
+## Modules
+### Auth Module
+- Login functionality
+- Token management
+
+### User Module
+- Profile management
+- Preferences storage
+
+## API Contracts
+- POST /api/login
+- GET /api/users/{id}
+
+## Dependencies
+- Auth Module depends on User Module
+- User Module requires Database
+"""
+
+    @staticmethod
+    def get_valid_l4_content():
+        return """# Implementation
+
+## File Structure
+```
+src/
+├── auth/
+│   ├── __init__.py
+│   └── login.py
+├── user/
+│   ├── __init__.py
+│   └── profile.py
+```
+
+## Code Patterns
+- Repository pattern for data access
+- Service layer for business logic
+"""
+
+    @staticmethod
+    def get_valid_constraints_yml():
+        return {
+            "version": "1.0.0",
+            "constraints": [
+                {
+                    "id": "CON-001",
+                    "name": "Response Time",
+                    "category": "performance",
+                    "priority": "high",
+                    "conflicting": [],
+                },
+                {
+                    "id": "CON-002",
+                    "name": "Uptime",
+                    "category": "reliability",
+                    "priority": "high",
+                    "conflicting": [],
+                },
+                {
+                    "id": "CON-003",
+                    "name": "Security",
+                    "category": "security",
+                    "priority": "high",
+                    "conflicting": ["CON-004"],
+                },
+                {
+                    "id": "CON-004",
+                    "name": "Fast",
+                    "category": "performance",
+                    "priority": "medium",
+                    "conflicting": ["CON-003"],
+                },
+            ],
+        }
+
+    @staticmethod
+    def get_valid_checkpoint_yml():
+        return {
+            "current_layer": "L2",
+            "last_completed": "L1",
+            "validation_status": {
+                "L1": "PASSED",
+                "L2": "IN_PROGRESS",
+                "L3": "NOT_STARTED",
+                "L4": "NOT_STARTED",
+            },
+            "constraint_registry_version": 1,
+            "timestamp": "2024-01-01T00:00:00",
+        }
+
+
+# =============================================================================
+# Test Class 1: Init Architecture
+# =============================================================================
+
+
+class TestInitArchitecture(unittest.TestCase):
+    """Tests for init_architecture.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.original_cwd = os.getcwd()
+
+    def tearDown(self):
+        os.chdir(self.original_cwd)
+
+    def test_create_directory_structure(self):
+        """Test that project directory structure is created correctly."""
+        project_name = "test_project"
+        plan_dir = init_architecture.create_directory_structure(
+            os.path.join(self.temp_dir, project_name)
+        )
+
+        self.assertTrue(plan_dir.exists())
+        self.assertEqual(plan_dir.name, ".plan")
+        self.assertTrue(plan_dir.parent.name, project_name)
+
+    def test_create_l1_meta_architecture(self):
+        """Test L1 meta-architecture file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_l1_meta_architecture(plan_dir)
+
+        l1_file = plan_dir / "L1-meta-architecture.md"
+        self.assertTrue(l1_file.exists())
+
+        content = l1_file.read_text()
+        self.assertIn("# Meta-Architecture", content)
+        self.assertIn("## Vision", content)
+        self.assertIn("## Constraints", content)
+        self.assertIn("## Principles", content)
+        self.assertIn("## Success Criteria", content)
+
+    def test_create_l2_system_architecture(self):
+        """Test L2 system architecture file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_l2_system_architecture(plan_dir)
+
+        l2_file = plan_dir / "L2-system-architecture.md"
+        self.assertTrue(l2_file.exists())
+
+        content = l2_file.read_text()
+        self.assertIn("# System Architecture", content)
+        self.assertIn("## Overview", content)
+        self.assertIn("## Components", content)
+
+    def test_create_l3_component_design(self):
+        """Test L3 component design file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_l3_component_design(plan_dir)
+
+        l3_file = plan_dir / "L3-component-design.md"
+        self.assertTrue(l3_file.exists())
+
+        content = l3_file.read_text()
+        self.assertIn("# Component Design", content)
+        self.assertIn("## Component A", content)
+
+    def test_create_l4_implementation(self):
+        """Test L4 implementation file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_l4_implementation(plan_dir)
+
+        l4_file = plan_dir / "L4-implementation.md"
+        self.assertTrue(l4_file.exists())
+
+        content = l4_file.read_text()
+        self.assertIn("# Implementation", content)
+        self.assertIn("## File Structure", content)
+
+    def test_create_constraints_yml(self):
+        """Test constraints.yml file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_constraints_yml(plan_dir)
+
+        constraints_file = plan_dir / "constraints.yml"
+        self.assertTrue(constraints_file.exists())
+
+        content = yaml.safe_load(constraints_file.read_text())
+        self.assertEqual(content["constraints"], [])
+        self.assertEqual(content["version"], 1)
+
+    def test_create_checkpoint_yml(self):
+        """Test checkpoint.yml file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_checkpoint_yml(plan_dir)
+
+        checkpoint_file = plan_dir / "checkpoint.yml"
+        self.assertTrue(checkpoint_file.exists())
+
+        content = yaml.safe_load(checkpoint_file.read_text())
+        self.assertIsNone(content["current_layer"])
+        self.assertIsNone(content["last_completed"])
+
+    def test_main_with_valid_project_name(self):
+        """Test main function with valid project name."""
+        project_name = os.path.join(self.temp_dir, "my_project")
+
+        with patch.object(sys, "argv", ["init_architecture.py", project_name]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                try:
+                    init_architecture.main()
+                except SystemExit as e:
+                    self.assertEqual(e.code, 0)
+
+        # Check all files were created
+        plan_dir = Path(project_name) / ".plan"
+        self.assertTrue(plan_dir.exists())
+        self.assertTrue((plan_dir / "L1-meta-architecture.md").exists())
+        self.assertTrue((plan_dir / "L2-system-architecture.md").exists())
+        self.assertTrue((plan_dir / "L3-component-design.md").exists())
+        self.assertTrue((plan_dir / "L4-implementation.md").exists())
+        self.assertTrue((plan_dir / "constraints.yml").exists())
+        self.assertTrue((plan_dir / "checkpoint.yml").exists())
+
+    def test_main_without_project_name(self):
+        """Test main function exits with error when no project name provided."""
+        with patch.object(sys, "argv", ["init_architecture.py"]):
+            with patch("sys.stderr", new=StringIO()) as mock_stderr:
+                with self.assertRaises(SystemExit) as context:
+                    init_architecture.main()
+                self.assertEqual(context.exception.code, 1)
+
+    def test_main_with_exception(self):
+        """Test main function handles exceptions gracefully."""
+        with patch.object(sys, "argv", ["init_architecture.py", ""]):
+            with patch("sys.stderr", new=StringIO()) as mock_stderr:
+                with self.assertRaises(SystemExit) as context:
+                    init_architecture.main()
+                self.assertEqual(context.exception.code, 1)
+
+
+# =============================================================================
+# Test Class 2: Validate Layer
+# =============================================================================
+
+
+class TestValidateLayer(unittest.TestCase):
+    """Tests for validate_layer.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+
+        # Create architecture directory
+        self.arch_dir = Path(self.temp_dir) / "architecture"
+        self.arch_dir.mkdir()
+
+    def test_get_arch_dir(self):
+        """Test architecture directory detection."""
+        arch_dir = validate_layer.get_arch_dir()
+        self.assertIsInstance(arch_dir, Path)
+
+    def test_find_layer_file_l1(self):
+        """Test finding L1 layer file."""
+        # Create L1 file
+        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file.write_text("# Vision\n\n## Vision\nTest")
+
+        result = validate_layer.find_layer_file(self.arch_dir, "L1")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.name, "01-Vision.md")
+
+    def test_find_layer_file_not_found(self):
+        """Test finding non-existent layer file."""
+        result = validate_layer.find_layer_file(self.arch_dir, "L1")
+        self.assertIsNone(result)
+
+    def test_parse_sections(self):
+        """Test section parsing from markdown."""
+        content = """# Title
+
+## Section One
+Content here
+
+### Subsection
+More content
+
+## Section Two
+More content
+"""
+        test_file = self.arch_dir / "test.md"
+        test_file.write_text(content)
+
+        sections, full_content = validate_layer.parse_sections(test_file)
+
+        self.assertIn("Section One", sections)
+        self.assertIn("Section Two", sections)
+        self.assertIn("Subsection", sections)
+
+    def test_count_constraints(self):
+        """Test constraint counting in content."""
+        content = """
+- Constraint: Response time < 200ms
+- Constraint: 99.9% uptime
+1. Constraint: Support 1000 users
+"""
+        count = validate_layer.count_constraints(content)
+        self.assertGreaterEqual(count, 3)
+
+    def test_check_previous_layer_complete(self):
+        """Test checking if previous layer is complete."""
+        # No previous layer for L1
+        result = validate_layer.check_previous_layer_complete(self.arch_dir, "L1")
+        self.assertIsNone(result)
+
+        # Create L1 file for L2 check
+        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file.write_text("# Vision")
+
+        result = validate_layer.check_previous_layer_complete(self.arch_dir, "L2")
+        self.assertTrue(result)
+
+    def test_validate_layer_l1_success(self):
+        """Test L1 validation with valid content."""
+        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file.write_text(TestFixtures.get_valid_l1_content())
+
+        with patch("sys.stdout", new=StringIO()):
+            warnings = validate_layer.validate_layer(self.arch_dir, "L1")
+
+        # Should return list (might be empty or have warnings)
+        self.assertIsInstance(warnings, list)
+
+    def test_validate_layer_unknown_layer(self):
+        """Test validation of unknown layer."""
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            result = validate_layer.validate_layer(self.arch_dir, "L5")
+
+        self.assertIsNone(result)
+
+    def test_validate_layer_file_not_found(self):
+        """Test validation when layer file not found."""
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            result = validate_layer.validate_layer(self.arch_dir, "L1")
+
+        self.assertIsNone(result)
+
+    def test_main_valid_layer(self):
+        """Test main function with valid layer."""
+        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file.write_text(TestFixtures.get_valid_l1_content())
+
+        with patch.object(sys, "argv", ["validate_layer.py", "L1"]):
+            with patch.object(
+                validate_layer, "get_arch_dir", return_value=self.arch_dir
+            ):
+                with patch("sys.stdout", new=StringIO()):
+                    with self.assertRaises(SystemExit) as context:
+                        validate_layer.main()
+                    # Should exit with 0 (soft gate)
+                    self.assertEqual(context.exception.code, 0)
+
+    def test_main_no_args(self):
+        """Test main function with no arguments."""
+        with patch.object(sys, "argv", ["validate_layer.py"]):
+            with patch("sys.stdout", new=StringIO()):
+                with self.assertRaises(SystemExit) as context:
+                    validate_layer.main()
+                self.assertEqual(context.exception.code, 1)
+
+    def test_soft_gate_behavior(self):
+        """Test that validation returns 0 even with warnings."""
+        # Create incomplete L1 file (missing sections)
+        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file.write_text("# Vision\n\nOnly header here")
+
+        with patch.object(sys, "argv", ["validate_layer.py", "L1"]):
+            with patch.object(
+                validate_layer, "get_arch_dir", return_value=self.arch_dir
+            ):
+                with patch("sys.stdout", new=StringIO()):
+                    with self.assertRaises(SystemExit) as context:
+                        validate_layer.main()
+                    # Soft gate - should exit 0 even with warnings
+                    self.assertEqual(context.exception.code, 0)
+
+
+# =============================================================================
+# Test Class 3: Check Constraints
+# =============================================================================
+
+
+class TestCheckConstraints(unittest.TestCase):
+    """Tests for check_constraints.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.project_root = Path(self.temp_dir)
+
+        # Create .plan directory
+        self.plan_dir = self.project_root / ".plan"
+        self.plan_dir.mkdir()
+
+    def test_constraint_dataclass(self):
+        """Test Constraint dataclass initialization."""
+        constraint = Constraint(
+            id="CON-001",
+            name="Test Constraint",
+            category="performance",
+            priority="high",
+        )
+
+        self.assertEqual(constraint.id, "CON-001")
+        self.assertEqual(constraint.name, "Test Constraint")
+        self.assertEqual(constraint.category, "performance")
+        self.assertEqual(constraint.priority, "high")
+        self.assertEqual(constraint.conflicting, [])
+
+    def test_component_dataclass(self):
+        """Test Component dataclass initialization."""
+        component = Component(
+            name="AuthService",
+            layer="L2",
+            constraints=["CON-001"],
+            dependencies=["UserService"],
+        )
+
+        self.assertEqual(component.name, "AuthService")
+        self.assertEqual(component.layer, "L2")
+        self.assertEqual(component.constraints, ["CON-001"])
+        self.assertEqual(component.dependencies, ["UserService"])
+
+    def test_load_constraints_registry_success(self):
+        """Test successful loading of constraints registry."""
+        constraints_data = TestFixtures.get_valid_constraints_yml()
+        constraints_file = self.plan_dir / "constraints.yml"
+
+        with open(constraints_file, "w") as f:
+            yaml.dump(constraints_data, f)
+
+        checker = ConstraintChecker(self.project_root)
+        result = checker.load_constraints_registry()
+
+        self.assertTrue(result)
+        self.assertEqual(len(checker.constraints), 4)
+        self.assertIn("CON-001", checker.constraints)
+
+    def test_load_constraints_registry_file_not_found(self):
+        """Test loading when constraints file doesn't exist."""
+        checker = ConstraintChecker(self.project_root)
+        result = checker.load_constraints_registry()
+
+        self.assertFalse(result)
+        self.assertIn("not found", checker.errors[0])
+
+    def test_load_constraints_registry_invalid_yaml(self):
+        """Test loading with invalid YAML."""
+        constraints_file = self.plan_dir / "constraints.yml"
+        constraints_file.write_text("invalid: yaml: content: [")
+
+        checker = ConstraintChecker(self.project_root)
+        result = checker.load_constraints_registry()
+
+        self.assertFalse(result)
+
+    def test_scan_layer_files(self):
+        """Test scanning layer files."""
+        # Create test layer files
+        for i in range(1, 5):
+            layer_file = self.plan_dir / f"L{i}.md"
+            layer_file.write_text(f"# Layer {i}\n\n## Component\nTest")
+
+        checker = ConstraintChecker(self.project_root)
+        files_scanned = checker.scan_layer_files()
+
+        self.assertEqual(files_scanned, 4)
+
+    def test_check_naming_collisions(self):
+        """Test detection of naming collisions."""
+        checker = ConstraintChecker(self.project_root)
+
+        # Add components with same name in different layers
+        comp1 = Component(name="AuthService", layer="L2")
+        comp2 = Component(name="AuthService", layer="L3")
+
+        checker.components["AuthService"].append(comp1)
+        checker.components["AuthService"].append(comp2)
+
+        checker.check_naming_collisions()
+
+        self.assertEqual(len(checker.warnings), 1)
+        self.assertIn("Naming collision", checker.warnings[0])
+
+    def test_check_undefined_constraints(self):
+        """Test detection of undefined constraints."""
+        checker = ConstraintChecker(self.project_root)
+
+        # Add constraint to registry
+        checker.constraints["CON-001"] = Constraint(
+            id="CON-001", name="Test", category="test", priority="low"
+        )
+
+        # Add component with undefined constraint
+        comp = Component(name="Test", layer="L2", constraints=["CON-999"])
+        checker.components["Test"].append(comp)
+
+        checker.check_undefined_constraints()
+
+        self.assertEqual(len(checker.warnings), 1)
+        self.assertIn("CON-999", checker.warnings[0])
+
+    def test_check_circular_dependencies(self):
+        """Test detection of circular dependencies."""
+        checker = ConstraintChecker(self.project_root)
+
+        # Create circular dependency: A -> B -> A
+        comp_a = Component(name="ServiceA", layer="L2", dependencies=["ServiceB"])
+        comp_b = Component(name="ServiceB", layer="L2", dependencies=["ServiceA"])
+
+        checker.components["ServiceA"].append(comp_a)
+        checker.components["ServiceB"].append(comp_b)
+
+        checker.check_circular_dependencies()
+
+        self.assertEqual(len(checker.warnings), 1)
+        self.assertIn("Circular dependency", checker.warnings[0])
+
+    def test_check_constraint_count_warning(self):
+        """Test constraint count warning when >7."""
+        checker = ConstraintChecker(self.project_root)
+        checker.layer_constraint_counts["L1"] = 10
+
+        checker.check_constraint_count()
+
+        self.assertEqual(len(checker.warnings), 1)
+        self.assertIn("10 constraints", checker.warnings[0])
+
+    def test_check_contradictions(self):
+        """Test detection of constraint contradictions."""
+        checker = ConstraintChecker(self.project_root)
+
+        # Add conflicting constraints
+        checker.constraints["CON-003"] = Constraint(
+            id="CON-003", name="Secure", category="security", priority="high"
+        )
+        checker.constraints["CON-004"] = Constraint(
+            id="CON-004", name="Fast", category="performance", priority="medium"
+        )
+
+        # Add component with both constraints
+        comp = Component(name="Test", layer="L2", constraints=["CON-003", "CON-004"])
+        checker.components["Test"].append(comp)
+
+        checker.check_contradictions()
+
+        self.assertEqual(len(checker.warnings), 1)
+        self.assertIn("Contradiction", checker.warnings[0])
+
+    def test_generate_report(self):
+        """Test report generation."""
+        checker = ConstraintChecker(self.project_root)
+        checker.constraints["CON-001"] = Constraint(
+            id="CON-001", name="Test", category="test", priority="low"
+        )
+        checker.warnings.append("Test warning")
+
+        report = checker.generate_report(3)
+
+        self.assertIn("Checking constraints", report)
+        self.assertIn("1 constraints", report)
+        self.assertIn("Test warning", report)
+
+
+# =============================================================================
+# Test Class 4: Checkpoint Manager
+# =============================================================================
+
+
+class TestCheckpointManager(unittest.TestCase):
+    """Tests for checkpoint_manager.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.original_cwd = os.getcwd()
+        os.chdir(self.temp_dir)
+
+    def tearDown(self):
+        os.chdir(self.original_cwd)
+
+    def test_detect_current_state_no_files(self):
+        """Test state detection when no layer files exist."""
+        state = checkpoint_manager.detect_current_state()
+
+        self.assertEqual(state["current_layer"], "L1")
+        self.assertIsNone(state["last_completed"])
+        self.assertEqual(state["constraint_registry_version"], 1)
+
+    def test_detect_current_state_with_complete_l1(self):
+        """Test state detection with completed L1."""
+        # Create L1 file with completion marker
+        l1_file = Path("l1.md")
+        l1_file.write_text("# L1\n\n✓ COMPLETE")
+
+        state = checkpoint_manager.detect_current_state()
+
+        self.assertEqual(state["current_layer"], "L2")
+        self.assertEqual(state["last_completed"], "L1")
+        self.assertEqual(state["validation_status"]["L1"], "PASSED")
+
+    def test_detect_current_state_with_in_progress(self):
+        """Test state detection with in-progress layer."""
+        # Create L2 file with WIP marker
+        l2_file = Path("l2.md")
+        l2_file.write_text("# L2\n\nWIP")
+
+        state = checkpoint_manager.detect_current_state()
+
+        self.assertEqual(state["current_layer"], "L2")
+        self.assertEqual(state["validation_status"]["L2"], "IN_PROGRESS")
+
+    def test_detect_constraint_version(self):
+        """Test constraint version detection."""
+        # Create constraints.yml
+        plan_dir = Path(".plan")
+        plan_dir.mkdir()
+        constraints_file = plan_dir / "constraints.yml"
+
+        with open(constraints_file, "w") as f:
+            yaml.dump({"version": 5}, f)
+
+        version = checkpoint_manager.detect_constraint_version()
+        self.assertEqual(version, 5)
+
+    def test_ensure_checkpoint_dir(self):
+        """Test checkpoint directory creation."""
+        checkpoint_manager.ensure_checkpoint_dir()
+
+        self.assertTrue(checkpoint_manager.CHECKPOINT_DIR.exists())
+
+    def test_save_checkpoint(self):
+        """Test checkpoint saving."""
+        checkpoint_manager.save_checkpoint()
+
+        self.assertTrue(checkpoint_manager.CHECKPOINT_FILE.exists())
+
+        with open(checkpoint_manager.CHECKPOINT_FILE, "r") as f:
+            data = yaml.safe_load(f)
+
+        self.assertIn("current_layer", data)
+        self.assertIn("timestamp", data)
+
+    def test_load_checkpoint_exists(self):
+        """Test loading existing checkpoint."""
+        # First save a checkpoint
+        checkpoint_manager.save_checkpoint()
+
+        # Then load it
+        checkpoint = checkpoint_manager.load_checkpoint()
+
+        self.assertIsNotNone(checkpoint)
+        self.assertIn("current_layer", checkpoint)
+
+    def test_load_checkpoint_not_exists(self):
+        """Test loading when checkpoint doesn't exist."""
+        checkpoint = checkpoint_manager.load_checkpoint()
+        self.assertIsNone(checkpoint)
+
+    def test_display_checkpoint_with_data(self):
+        """Test displaying checkpoint with valid data."""
+        checkpoint = {
+            "current_layer": "L2",
+            "last_completed": "L1",
+            "validation_status": {"L1": "PASSED", "L2": "IN_PROGRESS"},
+            "constraint_registry_version": 1,
+            "timestamp": "2024-01-01T00:00:00",
+        }
+
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            checkpoint_manager.display_checkpoint(checkpoint)
+            output = mock_stdout.getvalue()
+
+        self.assertIn("L2", output)
+        self.assertIn("L1", output)
+
+    def test_display_checkpoint_none(self):
+        """Test displaying when no checkpoint exists."""
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            checkpoint_manager.display_checkpoint(None)
+            output = mock_stdout.getvalue()
+
+        self.assertIn("No checkpoint found", output)
+
+    def test_list_checkpoints(self):
+        """Test listing checkpoints."""
+        checkpoint_manager.save_checkpoint()
+
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            checkpoint_manager.list_checkpoints()
+            output = mock_stdout.getvalue()
+
+        self.assertIn("Checkpoint History", output)
+
+    def test_main_save_command(self):
+        """Test main function with save command."""
+        with patch.object(sys, "argv", ["checkpoint_manager.py", "save"]):
+            with patch("sys.stdout", new=StringIO()):
+                checkpoint_manager.main()
+
+        self.assertTrue(checkpoint_manager.CHECKPOINT_FILE.exists())
+
+    def test_main_load_command(self):
+        """Test main function with load command."""
+        checkpoint_manager.save_checkpoint()
+
+        with patch.object(sys, "argv", ["checkpoint_manager.py", "load"]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                checkpoint_manager.main()
+                output = mock_stdout.getvalue()
+
+        self.assertIn("Current Checkpoint", output)
+
+    def test_main_no_command(self):
+        """Test main function with no command."""
+        with patch.object(sys, "argv", ["checkpoint_manager.py"]):
+            with patch("sys.stdout", new=StringIO()):
+                with self.assertRaises(SystemExit) as context:
+                    checkpoint_manager.main()
+                self.assertEqual(context.exception.code, 1)
+
+
+# =============================================================================
+# Test Class 5: Dependency Graph
+# =============================================================================
+
+
+class TestDependencyGraph(unittest.TestCase):
+    """Tests for dependency_graph.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.base_path = Path(self.temp_dir)
+
+    def test_clean_component_name(self):
+        """Test component name cleaning."""
+        self.assertEqual(
+            dependency_graph.clean_component_name("`auth-service`"), "auth-service"
+        )
+        self.assertEqual(
+            dependency_graph.clean_component_name("**Auth Service**"), "Auth Service"
+        )
+        self.assertEqual(
+            dependency_graph.clean_component_name("the auth-service"), "auth-service"
+        )
+
+    def test_extract_component_names(self):
+        """Test extracting component names from text."""
+        text = "The `auth-service` and `user-db` are components."
+        names = dependency_graph.extract_component_names(text)
+
+        self.assertIn("auth-service", names)
+        self.assertIn("user-db", names)
+
+    def test_parse_dependencies_simple(self):
+        """Test parsing simple dependencies."""
+        content = """
+# Architecture
+
+AuthService depends on Database
+UserService requires Cache
+"""
+        deps = dependency_graph.parse_dependencies(content)
+
+        self.assertIn("AuthService", deps)
+        self.assertIn("Database", deps["AuthService"])
+
+    def test_detect_cycles_no_cycles(self):
+        """Test cycle detection with no cycles."""
+        deps = {"A": ["B"], "B": ["C"], "C": []}
+
+        cycles = dependency_graph.detect_cycles(deps)
+        self.assertEqual(len(cycles), 0)
+
+    def test_detect_cycles_with_cycle(self):
+        """Test cycle detection with circular dependency."""
+        deps = {"A": ["B"], "B": ["C"], "C": ["A"]}
+
+        cycles = dependency_graph.detect_cycles(deps)
+        self.assertGreater(len(cycles), 0)
+
+    def test_topological_sort_no_cycles(self):
+        """Test topological sort with no cycles."""
+        deps = {"A": ["B", "C"], "B": ["C"], "C": []}
+
+        sorted_nodes, has_cycle = dependency_graph.topological_sort(deps)
+
+        self.assertFalse(has_cycle)
+        self.assertEqual(len(sorted_nodes), 3)
+
+    def test_topological_sort_with_cycles(self):
+        """Test topological sort with cycles."""
+        deps = {"A": ["B"], "B": ["A"]}
+
+        sorted_nodes, has_cycle = dependency_graph.topological_sort(deps)
+
+        self.assertTrue(has_cycle)
+
+    def test_generate_dot(self):
+        """Test DOT format generation."""
+        deps = {"ServiceA": ["ServiceB", "Database"], "ServiceB": ["Database"]}
+
+        dot = dependency_graph.generate_dot(deps)
+
+        self.assertIn("digraph Architecture", dot)
+        self.assertIn('"ServiceA" -> "ServiceB"', dot)
+        self.assertIn('"ServiceA" -> "Database"', dot)
+        self.assertIn('"ServiceB" -> "Database"', dot)
+
+    def test_load_architecture_files(self):
+        """Test loading architecture files."""
+        # Create test files
+        l2_file = self.base_path / "L2-system-architecture.md"
+        l3_file = self.base_path / "L3-component-design.md"
+
+        l2_file.write_text("# L2\n\n## Component")
+        l3_file.write_text("# L3\n\n## Component")
+
+        l2_content, l3_content = dependency_graph.load_architecture_files(
+            self.base_path
+        )
+
+        self.assertIn("# L2", l2_content)
+        self.assertIn("# L3", l3_content)
+
+    def test_merge_dependencies(self):
+        """Test merging dependencies from L2 and L3."""
+        l2_deps = {"A": ["B"], "C": ["D"]}
+        l3_deps = {"A": ["C"], "E": ["F"]}
+
+        merged = dependency_graph.merge_dependencies(l2_deps, l3_deps)
+
+        self.assertIn("A", merged)
+        self.assertIn("B", merged["A"])
+        self.assertIn("C", merged["A"])
+        self.assertIn("C", merged)
+        self.assertIn("E", merged)
+
+    def test_main_check_flag(self):
+        """Test main function with --check flag."""
+        # Create test architecture files
+        l2_file = self.base_path / "L2-system-architecture.md"
+        l2_file.write_text("""
+# System Architecture
+
+## Components
+AuthService depends on Database
+""")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["dependency_graph.py", "--check", "--path", str(self.base_path)],
+        ):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                with self.assertRaises(SystemExit) as context:
+                    dependency_graph.main()
+                self.assertEqual(context.exception.code, 0)
+
+    def test_main_dot_output(self):
+        """Test main function DOT output."""
+        # Create test architecture files
+        l2_file = self.base_path / "L2-system-architecture.md"
+        l2_file.write_text("""
+# System Architecture
+AuthService depends on Database
+""")
+
+        with patch.object(
+            sys, "argv", ["dependency_graph.py", "--path", str(self.base_path)]
+        ):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                with self.assertRaises(SystemExit) as context:
+                    dependency_graph.main()
+                self.assertEqual(context.exception.code, 0)
+
+                output = mock_stdout.getvalue()
+                self.assertIn("digraph Architecture", output)
+
+
+# =============================================================================
+# Test Class 6: Constraint Add
+# =============================================================================
+
+
+class TestConstraintAdd(unittest.TestCase):
+    """Tests for constraint_add.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.original_cwd = os.getcwd()
+        os.chdir(self.temp_dir)
+
+    def tearDown(self):
+        os.chdir(self.original_cwd)
+
+    def test_parse_args_valid(self):
+        """Test argument parsing with valid arguments."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "constraint_add.py",
+                "--layer",
+                "L1",
+                "--type",
+                "performance",
+                "--text",
+                "Response time < 200ms",
+            ],
+        ):
+            args = constraint_add.parse_args()
+
+        self.assertEqual(args.layer, "L1")
+        self.assertEqual(args.type, "performance")
+        self.assertEqual(args.text, "Response time < 200ms")
+
+    def test_validate_constraint_text_valid(self):
+        """Test validation with valid constraint text."""
+        is_valid, error = constraint_add.validate_constraint_text(
+            "Response time must be < 200ms"
+        )
+
+        self.assertTrue(is_valid)
+        self.assertEqual(error, "")
+
+    def test_validate_constraint_text_vague_term(self):
+        """Test validation rejects vague terms."""
+        is_valid, error = constraint_add.validate_constraint_text("Must be fast")
+
+        self.assertFalse(is_valid)
+        self.assertIn("vague term", error)
+
+    def test_validate_constraint_text_too_short(self):
+        """Test validation rejects text that's too short."""
+        is_valid, error = constraint_add.validate_constraint_text("Short")
+
+        self.assertFalse(is_valid)
+        self.assertIn("too short", error)
+
+    def test_validate_constraint_text_no_metric(self):
+        """Test validation requires measurable metric."""
+        is_valid, error = constraint_add.validate_constraint_text(
+            "This is a constraint description"
+        )
+
+        self.assertFalse(is_valid)
+        self.assertIn("measurable", error)
+
+    def test_load_constraints_new_file(self):
+        """Test loading when constraints file doesn't exist."""
+        data = constraint_add.load_constraints()
+
+        self.assertEqual(data["version"], "1.0.0")
+        self.assertEqual(data["constraints"], [])
+
+    def test_load_constraints_existing_file(self):
+        """Test loading existing constraints file."""
+        plan_dir = Path(".plan")
+        plan_dir.mkdir()
+        constraints_file = plan_dir / "constraints.yml"
+        test_data = {"version": "2.0.0", "constraints": [{"id": "CON-001"}]}
+
+        with open(constraints_file, "w") as f:
+            yaml.dump(test_data, f)
+
+        data = constraint_add.load_constraints()
+
+        self.assertEqual(data["version"], "2.0.0")
+        self.assertEqual(len(data["constraints"]), 1)
+
+    def test_save_constraints(self):
+        """Test saving constraints."""
+        test_data = {"version": "1.0.0", "constraints": []}
+        constraint_add.save_constraints(test_data)
+
+        self.assertTrue(constraint_add.CONSTRAINTS_FILE.exists())
+
+    def test_check_duplicate_true(self):
+        """Test duplicate detection returns True for duplicate."""
+        constraints = [{"text": "Response time < 200ms"}]
+
+        is_duplicate = constraint_add.check_duplicate(
+            constraints, "Response time < 200ms"
+        )
+
+        self.assertTrue(is_duplicate)
+
+    def test_check_duplicate_false(self):
+        """Test duplicate detection returns False for unique."""
+        constraints = [{"text": "Response time < 200ms"}]
+
+        is_duplicate = constraint_add.check_duplicate(constraints, "Uptime > 99.9%")
+
+        self.assertFalse(is_duplicate)
+
+    def test_generate_constraint_id_first(self):
+        """Test ID generation for first constraint."""
+        constraints = []
+        new_id = constraint_add.generate_constraint_id(constraints)
+
+        self.assertEqual(new_id, "CON-001")
+
+    def test_generate_constraint_id_subsequent(self):
+        """Test ID generation for subsequent constraints."""
+        constraints = [{"id": "CON-001"}, {"id": "CON-005"}, {"id": "CON-003"}]
+        new_id = constraint_add.generate_constraint_id(constraints)
+
+        self.assertEqual(new_id, "CON-006")
+
+    def test_increment_version(self):
+        """Test version incrementing."""
+        self.assertEqual(constraint_add.increment_version("1.0.0"), "1.0.1")
+        self.assertEqual(constraint_add.increment_version("2.5.9"), "2.5.10")
+
+    def test_main_success(self):
+        """Test successful constraint addition."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "constraint_add.py",
+                "--layer",
+                "L1",
+                "--type",
+                "performance",
+                "--text",
+                "Response time < 200ms",
+            ],
+        ):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                constraint_add.main()
+                output = mock_stdout.getvalue()
+
+        self.assertIn("Constraint added", output)
+        self.assertIn("CON-001", output)
+
+    def test_main_validation_error(self):
+        """Test main with validation error."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "constraint_add.py",
+                "--layer",
+                "L1",
+                "--type",
+                "performance",
+                "--text",
+                "Fast",  # Vague term
+            ],
+        ):
+            with patch("sys.stderr", new=StringIO()):
+                with self.assertRaises(SystemExit) as context:
+                    constraint_add.main()
+                self.assertEqual(context.exception.code, 1)
+
+    def test_main_duplicate_error(self):
+        """Test main with duplicate constraint."""
+        # First add a constraint
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "constraint_add.py",
+                "--layer",
+                "L1",
+                "--type",
+                "performance",
+                "--text",
+                "Response time < 200ms",
+            ],
+        ):
+            constraint_add.main()
+
+        # Try to add duplicate
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "constraint_add.py",
+                "--layer",
+                "L1",
+                "--type",
+                "performance",
+                "--text",
+                "Response time < 200ms",
+            ],
+        ):
+            with patch("sys.stderr", new=StringIO()):
+                with self.assertRaises(SystemExit) as context:
+                    constraint_add.main()
+                self.assertEqual(context.exception.code, 1)
+
+
+# =============================================================================
+# Test Class 7: Lint Architecture
+# =============================================================================
+
+
+class TestLintArchitecture(unittest.TestCase):
+    """Tests for lint_architecture.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.base_path = Path(self.temp_dir)
+
+    def create_test_file(self, name, content):
+        """Helper to create test files."""
+        file_path = self.base_path / name
+        file_path.write_text(content)
+        return file_path
+
+    def test_lint_issue_dataclass(self):
+        """Test LintIssue dataclass."""
+        issue = lint_architecture.LintIssue(
+            file=Path("test.md"),
+            line=10,
+            severity="WARNING",
+            message="Test message",
+            check_type="test",
+        )
+
+        self.assertEqual(issue.line, 10)
+        self.assertEqual(issue.severity, "WARNING")
+
+    def test_lint_report_add(self):
+        """Test adding issues to report."""
+        report = lint_architecture.LintReport()
+
+        report.add(Path("test.md"), 5, "WARNING", "Test", "test")
+
+        self.assertEqual(len(report.issues), 1)
+        self.assertEqual(len(report.warnings()), 1)
+
+    def test_find_constraints_file(self):
+        """Test finding constraints file."""
+        # Create constraints file
+        constraints_file = self.base_path / "constraints.yml"
+        constraints_file.write_text("constraints: []")
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        found = linter.find_constraints_file()
+
+        self.assertIsNotNone(found)
+
+    def test_load_constraints(self):
+        """Test loading constraints."""
+        constraints_file = self.base_path / "constraints.yml"
+        constraints_file.write_text("""
+constraints:
+  - id: CON-001
+    name: Test
+  - id: CON-002
+    name: Test2
+""")
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        constraint_ids = linter.load_constraints()
+
+        self.assertIn("CON-001", constraint_ids)
+        self.assertIn("CON-002", constraint_ids)
+
+    def test_extract_frontmatter(self):
+        """Test frontmatter extraction."""
+        content = """---
+title: Test
+layer: L1
+---
+
+# Content
+"""
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        frontmatter, body = linter.extract_frontmatter(content)
+
+        self.assertIsNotNone(frontmatter)
+        self.assertEqual(frontmatter["title"], "Test")
+        self.assertIn("# Content", body)
+
+    def test_check_markdown_headers(self):
+        """Test markdown header checking."""
+        lines = [
+            "# Title",
+            "## Section 1",
+            "### Subsection",
+            "##Section 2",  # Malformed
+            "###",  # Empty
+        ]
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        headers = linter.check_markdown_headers(self.base_path / "test.md", lines)
+
+        self.assertGreater(len(headers), 0)
+        # Should have warnings for malformed headers
+        self.assertGreater(len(linter.report.issues), 0)
+
+    def test_check_constraint_references(self):
+        """Test constraint reference validation."""
+        # Set up known constraints
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        linter.report.constraint_ids = {"CON-001", "CON-002"}
+
+        lines = [
+            "This references CON-001",
+            "This references undefined CON-999",
+        ]
+
+        linter.check_constraint_references(self.base_path / "test.md", lines)
+
+        # Should have warning for undefined constraint
+        warnings = linter.report.warnings()
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("CON-999", warnings[0].message)
+
+    def test_check_naming_conventions(self):
+        """Test naming convention checking."""
+        lines = [
+            "Use `camelCaseName` for components",
+            "Use `kebab-case` for others",
+        ]
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        linter.check_naming_conventions(self.base_path / "test.md", lines)
+
+        # Should have info about camelCase
+        info_issues = [i for i in linter.report.issues if i.severity == "INFO"]
+        self.assertGreater(len(info_issues), 0)
+
+    def test_check_empty_sections(self):
+        """Test empty section detection."""
+        lines = [
+            "## Section 1",
+            "",
+            "## Section 2",
+            "Content here",
+        ]
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        linter.check_empty_sections(self.base_path / "test.md", lines)
+
+        # Should detect empty Section 1
+        warnings = linter.report.warnings()
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("Empty section", warnings[0].message)
+
+    def test_check_todo_markers(self):
+        """Test TODO marker detection."""
+        lines = [
+            "# Title",
+            "TODO: Fix this later",
+            "Some content",
+        ]
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        linter.check_todo_markers(self.base_path / "test.md", lines)
+
+        warnings = linter.report.warnings()
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("TODO", warnings[0].message)
+
+    def test_check_file_naming(self):
+        """Test file naming validation."""
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+
+        # Test layer file with wrong naming
+        linter.check_file_naming(self.base_path / "L1_test.md")
+
+        warnings = linter.report.warnings()
+        self.assertGreater(len(warnings), 0)
+
+    def test_check_common_antipatterns(self):
+        """Test anti-pattern detection."""
+        lines = [
+            "Some XXX placeholder text",
+            "FIXME: needs work",
+            "Normal content",
+        ]
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        linter.check_common_antipatterns(self.base_path / "test.md", lines)
+
+        warnings = linter.report.warnings()
+        self.assertGreaterEqual(len(warnings), 2)  # XXX and FIXME
+
+    def test_lint_file(self):
+        """Test full file linting."""
+        content = """# Test File
+
+## Section
+Content here
+
+TODO: Add more content
+"""
+        test_file = self.create_test_file("test.md", content)
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        linter.lint_file(test_file)
+
+        self.assertEqual(linter.report.files_checked, 1)
+        # Should have TODO warning
+        self.assertGreater(len(linter.report.warnings()), 0)
+
+    def test_find_architecture_files(self):
+        """Test finding architecture files."""
+        # Create test files
+        (self.base_path / "L1-test.md").write_text("# L1")
+        (self.base_path / "L2-test.md").write_text("# L2")
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+        files = linter.find_architecture_files()
+
+        self.assertEqual(len(files), 2)
+
+    def test_run_no_files(self):
+        """Test running linter with no files."""
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+
+        with patch("sys.stdout", new=StringIO()):
+            exit_code = linter.run()
+
+        self.assertEqual(exit_code, 0)
+
+    def test_run_with_issues(self):
+        """Test running linter with issues found."""
+        # Create test file with issues
+        content = "# Test\n\n## Section\n\n## Next\n\nTODO: fix"
+        (self.base_path / "L1-test.md").write_text(content)
+
+        linter = lint_architecture.ArchitectureLinter(self.base_path)
+
+        with patch("sys.stdout", new=StringIO()):
+            exit_code = linter.run()
+
+        self.assertEqual(exit_code, 0)  # Soft gate
+        self.assertGreater(len(linter.report.warnings()), 0)
+
+    def test_main_success(self):
+        """Test main function."""
+        # Create test file
+        (self.base_path / "L1-test.md").write_text("# Test\n\nContent")
+
+        with patch.object(sys, "argv", ["lint_architecture.py", str(self.base_path)]):
+            with patch("sys.stdout", new=StringIO()):
+                with self.assertRaises(SystemExit) as context:
+                    lint_architecture.main()
+                self.assertEqual(context.exception.code, 0)
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+if __name__ == "__main__":
+    # Configure test runner
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+
+    # Add all test classes
+    suite.addTests(loader.loadTestsFromTestCase(TestInitArchitecture))
+    suite.addTests(loader.loadTestsFromTestCase(TestValidateLayer))
+    suite.addTests(loader.loadTestsFromTestCase(TestCheckConstraints))
+    suite.addTests(loader.loadTestsFromTestCase(TestCheckpointManager))
+    suite.addTests(loader.loadTestsFromTestCase(TestDependencyGraph))
+    suite.addTests(loader.loadTestsFromTestCase(TestConstraintAdd))
+    suite.addTests(loader.loadTestsFromTestCase(TestLintArchitecture))
+
+    # Run tests with verbosity
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+
+    # Exit with appropriate code
+    sys.exit(0 if result.wasSuccessful() else 1)

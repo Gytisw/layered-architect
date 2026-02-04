@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plan-map.schema.json",
+  "title": "Plan Mapping Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "layers"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "root": {
+      "type": "string",
+      "description": "Base path for source files (default: current directory)."
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_words": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 2000
+        },
+        "max_bullets": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 50
+        }
+      }
+    },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "L0": { "$ref": "#/$defs/layer" },
+        "L1": { "$ref": "#/$defs/layer" },
+        "L2": { "$ref": "#/$defs/layer" },
+        "L3": { "$ref": "#/$defs/layer" },
+        "L4": { "$ref": "#/$defs/layer" },
+        "L5": { "$ref": "#/$defs/layer" }
+      }
+    }
+  },
+  "$defs": {
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources"],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "weight": { "type": "number", "minimum": 0 },
+                  "hint": { "type": "string" }
+                }
+              }
+            ]
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}
