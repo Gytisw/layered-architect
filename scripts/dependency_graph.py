@@ -156,7 +156,7 @@ def parse_dependencies(content: str) -> Dict[str, List[str]]:
 
                 # Skip if either is missing or they're the same
                 if source and target and source.lower() != target.lower():
-                    if source not in dependencies[target]:  # Avoid duplicates
+                    if target not in dependencies[source]:  # Avoid duplicates
                         dependencies[source].append(target)
 
     # Third pass: look for section headers that might define components

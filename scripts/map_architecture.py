@@ -122,6 +122,8 @@ KEYWORDS = {
     ],
 }
 
+CONSTRAINT_ID_PATTERN = re.compile(r"\bCON-\d{3,}\b")
+
 
 def iter_markdown_files(root: Path) -> List[Path]:
     files = []
@@ -251,6 +253,49 @@ def extract_summary_lines_with_source(path: Path, root: Path, cite: bool) -> Lis
     return [f"{line} (source: {rel})" for line in lines]
 
 
+def extract_constraints_from_paths(paths: List[Path]) -> Dict[str, str]:
+    """Extract constraint IDs and best-effort text from markdown sources."""
+    constraints: Dict[str, str] = {}
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            try:
+                text = path.read_text()
+            except Exception:
+                continue
+
+        for line in strip_code_blocks(text.splitlines()):
+            if "CON-" not in line:
+                continue
+            ids = CONSTRAINT_ID_PATTERN.findall(line)
+            if not ids:
+                continue
+            clean_line = re.sub(r"^[-*]\s+|\d+\.\s+", "", line).strip()
+            for cid in ids:
+                if cid not in constraints:
+                    constraints[cid] = clean_line or "TBD"
+    return constraints
+
+
+def write_constraints_file(out_dir: Path, constraints: Dict[str, str]) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    file_path = out_dir / "constraints.yml"
+    items = []
+    for cid in sorted(constraints.keys()):
+        items.append(
+            {
+                "id": cid,
+                "layer": "L1",
+                "type": "unspecified",
+                "text": constraints[cid],
+            }
+        )
+    data = {"version": "1.0.0", "constraints": items}
+    file_path.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
+    return file_path
+
+
 def limit_summary(lines: List[str], max_words: int, max_bullets: int) -> List[str]:
     limited = []
     word_count = 0
@@ -315,6 +360,14 @@ def build_l0_yaml(all_lines: List[str]) -> Dict:
         "open_questions": take(questions, 5),
         "success_criteria_draft": take(success, 3) or ["TBD from sources"],
         "decision_readiness": "not_ready",
+        "decision_log": [
+            {
+                "id": "DEC-001",
+                "decision": "TBD",
+                "rationale": "TBD",
+                "impact": "TBD",
+            }
+        ],
         "notes": "",
     }
 
@@ -381,6 +434,24 @@ def build_l5_yaml(all_lines: List[str]) -> Dict:
         "readiness_status": "not_ready",
         "residual_risks": risks[:3],
         "dependencies": [],
+        "decision_log": [
+            {
+                "id": "DEC-001",
+                "decision": "TBD",
+                "rationale": "TBD",
+                "impact": "TBD",
+            }
+        ],
+        "risk_register": [
+            {
+                "risk": "TBD",
+                "severity": "Medium",
+                "mitigation": "TBD",
+                "owner": "TBD",
+            }
+        ],
+        "threat_model": [],
+        "compliance_evidence": [],
         "notes": "",
     }
 
@@ -490,9 +561,11 @@ def main() -> None:
         if mapping.get("unmapped"):
             print(f"Unmapped files: {len(mapping.get('unmapped'))}")
 
+    all_sources: Dict[str, List[Path]] = {}
     for layer, layer_cfg in mapping.get("layers", {}).items():
         sources = normalize_sources(layer_cfg)
         resolved_sources = [(root / src).resolve() for src in sources]
+        all_sources[layer] = resolved_sources
         summary = []
         for src in resolved_sources:
             summary.extend(extract_summary_lines_with_source(src, root, cite))
@@ -521,6 +594,25 @@ def main() -> None:
             l0_yaml=l0_yaml,
             l5_yaml=l5_yaml,
         )
+
+    if args.apply:
+        constraints_file = out_dir / "constraints.yml"
+        if not constraints_file.exists():
+            # Prefer L1 sources for constraints; fallback to all sources.
+            constraint_sources = all_sources.get("L1", [])
+            if not constraint_sources:
+                constraint_sources = [
+                    path for paths in all_sources.values() for path in paths
+                ]
+            constraints = extract_constraints_from_paths(constraint_sources)
+            write_constraints_file(out_dir, constraints)
+            print(f"Generated constraints registry in {constraints_file}")
+            logger.log(
+                "info",
+                "constraints_generated",
+                "Constraints registry generated",
+                {"constraints_file": str(constraints_file), "count": len(constraints)},
+            )
 
     if args.apply:
         print(f"Generated layer summaries in {out_dir}")

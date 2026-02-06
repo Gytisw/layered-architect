@@ -244,7 +244,8 @@ class TestInitArchitecture(unittest.TestCase):
         content = l2_file.read_text()
         self.assertIn("# System Architecture", content)
         self.assertIn("## Overview", content)
-        self.assertIn("## Components", content)
+        self.assertIn("## Subsystems", content)
+        self.assertIn("## Interfaces", content)
 
     def test_create_l3_component_design(self):
         """Test L3 component design file creation."""
@@ -258,7 +259,8 @@ class TestInitArchitecture(unittest.TestCase):
 
         content = l3_file.read_text()
         self.assertIn("# Component Design", content)
-        self.assertIn("## Component A", content)
+        self.assertIn("## Modules", content)
+        self.assertIn("### Component A", content)
 
     def test_create_l4_implementation(self):
         """Test L4 implementation file creation."""
@@ -286,7 +288,7 @@ class TestInitArchitecture(unittest.TestCase):
 
         content = yaml.safe_load(constraints_file.read_text())
         self.assertEqual(content["constraints"], [])
-        self.assertEqual(content["version"], 1)
+        self.assertEqual(content["version"], "1.0.0")
 
     def test_create_checkpoint_yml(self):
         """Test checkpoint.yml file creation."""
@@ -364,12 +366,12 @@ class TestValidateLayer(unittest.TestCase):
     def test_find_layer_file_l1(self):
         """Test finding L1 layer file."""
         # Create L1 file
-        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text("# Vision\n\n## Vision\nTest")
 
         result = validate_layer.find_layer_file(self.arch_dir, "L1")
         self.assertIsNotNone(result)
-        self.assertEqual(result.name, "01-Vision.md")
+        self.assertEqual(result.name, "L1-meta-architecture.md")
 
     def test_find_layer_file_not_found(self):
         """Test finding non-existent layer file."""
@@ -415,7 +417,7 @@ More content
         self.assertIsNone(result)
 
         # Create L1 file for L2 check
-        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text("# Vision")
 
         result = validate_layer.check_previous_layer_complete(self.arch_dir, "L2")
@@ -423,7 +425,7 @@ More content
 
     def test_validate_layer_l1_success(self):
         """Test L1 validation with valid content."""
-        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text(TestFixtures.get_valid_l1_content())
 
         with patch("sys.stdout", new=StringIO()):
@@ -453,7 +455,7 @@ Test
 - Handle 10,000 requests/second
 - 99.99% availability
 """
-        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text(content)
 
         warnings = validate_layer.validate_layer(self.arch_dir, "L1")
@@ -478,7 +480,7 @@ Client -> API Gateway
 ## Decision Log
 1. Decision: Use REST
 """
-        l2_file = self.arch_dir / "02-Architecture.md"
+        l2_file = self.arch_dir / "L2-system-architecture.md"
         l2_file.write_text(content)
 
         warnings = validate_layer.validate_layer(self.arch_dir, "L2")
@@ -525,7 +527,7 @@ residual_risks: []
 
     def test_main_valid_layer(self):
         """Test main function with valid layer."""
-        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text(TestFixtures.get_valid_l1_content())
 
         with patch.object(sys, "argv", ["validate_layer.py", "--soft", "L1"]):
@@ -551,7 +553,7 @@ residual_risks: []
     def test_soft_gate_behavior(self):
         """Test that validation returns 0 even with warnings."""
         # Create incomplete L1 file (missing sections)
-        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text("# Vision\n\nOnly header here")
 
         with patch.object(sys, "argv", ["validate_layer.py", "--soft", "L1"]):
@@ -647,9 +649,14 @@ class TestCheckConstraints(unittest.TestCase):
     def test_scan_layer_files(self):
         """Test scanning layer files."""
         # Create test layer files
-        for i in range(1, 5):
-            layer_file = self.plan_dir / f"L{i}.md"
-            layer_file.write_text(f"# Layer {i}\n\n## Component\nTest")
+        layer_files = [
+            self.plan_dir / "L1-meta-architecture.md",
+            self.plan_dir / "L2-system-architecture.md",
+            self.plan_dir / "L3-component-design.md",
+            self.plan_dir / "L4-implementation.md",
+        ]
+        for idx, layer_file in enumerate(layer_files, 1):
+            layer_file.write_text(f"# Layer {idx}\n\n## Component\nTest")
 
         checker = ConstraintChecker(self.project_root)
         files_scanned = checker.scan_layer_files()
@@ -780,7 +787,9 @@ class TestCheckpointManager(unittest.TestCase):
     def test_detect_current_state_with_complete_l1(self):
         """Test state detection with completed L1."""
         # Create L1 file with completion marker
-        l1_file = Path("l1.md")
+        plan_dir = Path(".plan")
+        plan_dir.mkdir(exist_ok=True)
+        l1_file = plan_dir / "L1-meta-architecture.md"
         l1_file.write_text("# L1\n\n✓ COMPLETE")
 
         state = checkpoint_manager.detect_current_state()
@@ -792,7 +801,9 @@ class TestCheckpointManager(unittest.TestCase):
     def test_detect_current_state_with_in_progress(self):
         """Test state detection with in-progress layer."""
         # Create L2 file with WIP marker
-        l2_file = Path("l2.md")
+        plan_dir = Path(".plan")
+        plan_dir.mkdir(exist_ok=True)
+        l2_file = plan_dir / "L2-system-architecture.md"
         l2_file.write_text("# L2\n\nWIP")
 
         state = checkpoint_manager.detect_current_state()
@@ -1534,6 +1545,9 @@ class TestMapArchitecture(unittest.TestCase):
             map_architecture.main()
 
         self.assertTrue((Path(".plan") / "L1-meta-architecture.md").exists())
+        self.assertTrue((Path(".plan") / "constraints.yml").exists())
+        constraints = yaml.safe_load((Path(".plan") / "constraints.yml").read_text())
+        self.assertIn("constraints", constraints)
         mapping = yaml.safe_load(Path("plan.map.yml").read_text())
         self.assertIn("unmapped", mapping)
 

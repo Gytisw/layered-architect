@@ -169,6 +169,21 @@ quality_gates:
 
 ---
 
+## Decision Log
+
+1. **Decision**: [Key architectural decision]
+   - **Rationale**: [Why this decision was made]
+   - **Impact**: [What it affects downstream]
+
+## Risk Register
+
+1. **Risk**: [Description]
+   - **Severity**: [Low/Medium/High]
+   - **Mitigation**: [Action]
+   - **Owner**: [Role/Team]
+
+---
+
 *Document Version: 1.0*  
 *Last Updated: 2024-01-15*  
 *Next Review: 2024-04-15*

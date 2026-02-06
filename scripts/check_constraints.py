@@ -33,6 +33,7 @@ class Constraint:
     category: str
     priority: str
     conflicting: List[str] = field(default_factory=list)
+    text: str = ""
 
 
 @dataclass
@@ -69,14 +70,31 @@ class ConstraintChecker:
                 return False
 
             for item in data["constraints"]:
+                if isinstance(item, str):
+                    constraint = Constraint(
+                        id=item,
+                        name=item,
+                        category="",
+                        priority="",
+                        conflicting=[],
+                        text=item,
+                    )
+                    self.constraints[constraint.id] = constraint
+                    continue
+                if not isinstance(item, dict):
+                    continue
+
+                name = item.get("name") or item.get("text") or item.get("description") or ""
                 constraint = Constraint(
                     id=item.get("id", ""),
-                    name=item.get("name", ""),
-                    category=item.get("category", ""),
-                    priority=item.get("priority", ""),
-                    conflicting=item.get("conflicting", []),
+                    name=name,
+                    category=item.get("category") or item.get("type") or "",
+                    priority=item.get("priority") or item.get("severity") or "",
+                    conflicting=item.get("conflicting", []) if isinstance(item.get("conflicting", []), list) else [],
+                    text=item.get("text", "") or name,
                 )
-                self.constraints[constraint.id] = constraint
+                if constraint.id:
+                    self.constraints[constraint.id] = constraint
 
             return True
 
@@ -92,10 +110,16 @@ class ConstraintChecker:
         plan_dir = self.project_root / ".plan"
         files_scanned = 0
 
-        for layer_num in range(1, 5):
-            layer_file = plan_dir / f"L{layer_num}.md"
+        layer_files = {
+            "L1": plan_dir / "L1-meta-architecture.md",
+            "L2": plan_dir / "L2-system-architecture.md",
+            "L3": plan_dir / "L3-component-design.md",
+            "L4": plan_dir / "L4-implementation.md",
+        }
+
+        for layer, layer_file in layer_files.items():
             if layer_file.exists():
-                self._parse_layer_file(layer_file, f"L{layer_num}")
+                self._parse_layer_file(layer_file, layer)
                 files_scanned += 1
 
         return files_scanned
@@ -251,8 +275,8 @@ class ConstraintChecker:
             ("generic", "specific"),
         }
 
-        name_a = constraint_a.name.lower()
-        name_b = constraint_b.name.lower()
+        name_a = (constraint_a.name or constraint_a.text or "").lower()
+        name_b = (constraint_b.name or constraint_b.text or "").lower()
 
         for conflict_a, conflict_b in semantic_conflicts:
             if (conflict_a in name_a and conflict_b in name_b) or (
@@ -320,9 +344,8 @@ class ConstraintChecker:
 def main():
     """Main entry point."""
     logger = init_logger("check_constraints")
-    # Determine project root (script is in skills/layered-architect/scripts/)
-    script_dir = Path(__file__).parent
-    project_root = script_dir.parent.parent.parent
+    # Use current working directory as project root
+    project_root = Path(".").resolve()
 
     checker = ConstraintChecker(project_root)
     report = checker.run()

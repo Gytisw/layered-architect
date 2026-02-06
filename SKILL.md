@@ -28,6 +28,8 @@ Define vision, constraints, principles, and success criteria.
 - Constraints (5-7 maximum, specific and testable)
 - Principles (3-5 maximum, actionable)
 - Success Criteria (measurable targets)
+- Decision Log (key decisions + rationale)
+- Risk Register (top risks with mitigation)
 
 ### L2: System Architecture  
 Define subsystems, boundaries, data flow, and interfaces.
@@ -37,6 +39,9 @@ Define subsystems, boundaries, data flow, and interfaces.
 - Boundary Definitions
 - Data Flow Diagrams
 - Interface Contracts
+- Migration Strategy (if legacy systems exist)
+- Tradeoff Matrix
+- Decision Log
 - Constraint inheritance from L1
 
 ### L3: Component Design
@@ -47,6 +52,7 @@ Define modules, APIs, dependencies, and contracts.
 - API Contracts
 - Dependency Graph
 - Implementation Notes
+- Decision Log
 
 ### L4: Implementation
 Define code structure, patterns, and file organization.
@@ -56,6 +62,7 @@ Define code structure, patterns, and file organization.
 - Code Patterns
 - Implementation Details
 - Validation Commands
+- Decision Log
 
 ## Optional Layers (L0/L5)
 
@@ -107,6 +114,9 @@ To adapt existing documentation into L0–L5 without changing the original struc
 1. Generate a mapping: `python scripts/map_architecture.py --suggest`
 2. Review/edit `plan.map.yml`
 3. Generate summaries: `python scripts/map_architecture.py --apply`
+
+If `.plan/constraints.yml` is missing, the adapter will generate a stub registry
+from any `CON-###` references found in mapped sources.
 
 Mapping schema reference: `schemas/plan-map.schema.json`
 

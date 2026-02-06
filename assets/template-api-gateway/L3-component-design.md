@@ -736,5 +736,13 @@ interface Service {
 
 ---
 
+## Decision Log
+
+1. **Decision**: [Key component design decision]
+   - **Rationale**: [Why this decision was made]
+   - **Impact**: [What it affects downstream]
+
+---
+
 *Document Version: 1.0*  
 *Based on L2: API Gateway System Architecture*

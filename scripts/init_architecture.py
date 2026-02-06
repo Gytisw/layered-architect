@@ -41,6 +41,17 @@ def create_l1_meta_architecture(plan_dir: Path):
 ## Success Criteria
 - [Measurable target with metric]
 - [Measurable target with metric]
+
+## Decision Log
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
+
+## Risk Register
+1. **Risk**: [Description]
+   - **Severity**: [Low/Medium/High]
+   - **Mitigation**: [Action]
+   - **Owner**: [Role/Team]
 """
     (plan_dir / "L1-meta-architecture.md").write_text(content)
 
@@ -51,19 +62,36 @@ def create_l2_system_architecture(plan_dir: Path):
 ## Overview
 [High-level description of the system]
 
-## Components
-- **Component A**: [Purpose and responsibility]
-- **Component B**: [Purpose and responsibility]
+## Subsystems
+- **Subsystem A**: [Purpose and responsibility]
+- **Subsystem B**: [Purpose and responsibility]
+
+## Boundaries
+[Boundary definitions and ownership]
 
 ## Data Flow
 [Description of how data moves through the system]
+
+## Interfaces
+[APIs, protocols, or interfaces the system exposes]
 
 ## External Dependencies
 - [Dependency 1]: [Purpose and version constraint]
 - [Dependency 2]: [Purpose and version constraint]
 
-## Interface Definitions
-[APIs, protocols, or interfaces the system exposes]
+## Migration Strategy
+[If legacy systems exist, outline migration approach]
+
+## Tradeoff Matrix
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| A | | | |
+| B | | | |
+
+## Decision Log
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
 """
     (plan_dir / "L2-system-architecture.md").write_text(content)
 
@@ -71,13 +99,15 @@ def create_l2_system_architecture(plan_dir: Path):
 def create_l3_component_design(plan_dir: Path):
     content = """# Component Design
 
-## Component A
+## Modules
 
-### Responsibilities
+### Component A
+
+#### Responsibilities
 - [Responsibility 1]
 - [Responsibility 2]
 
-### Public Interface
+#### Public Interface
 ```python
 class ComponentA:
     def method_name(self, param: Type) -> ReturnType:
@@ -85,22 +115,33 @@ class ComponentA:
         pass
 ```
 
-### Internal Structure
+#### Internal Structure
 [Description of internal classes/modules]
 
-## Component B
+### Component B
 
-### Responsibilities
+#### Responsibilities
 - [Responsibility 1]
 - [Responsibility 2]
 
-### Public Interface
+#### Public Interface
 ```python
 class ComponentB:
     def method_name(self, param: Type) -> ReturnType:
         \"\"\"[Docstring description]\"\"\"
         pass
 ```
+
+## API Contracts
+- [Endpoint or method signature + error conditions]
+
+## Dependencies
+- Component A depends on [Component B]
+
+## Decision Log
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
 """
     (plan_dir / "L3-component-design.md").write_text(content)
 
@@ -122,6 +163,10 @@ project/
 └── requirements.txt
 ```
 
+## Code Patterns
+- [Pattern 1] (e.g., Repository, CQRS, Hexagonal)
+- [Pattern 2]
+
 ## Implementation Order
 1. [ ] [First task to implement]
 2. [ ] [Second task to implement]
@@ -133,13 +178,18 @@ project/
 
 ## Build & Deployment
 [Instructions for building and deploying]
+
+## Decision Log
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
 """
     (plan_dir / "L4-implementation.md").write_text(content)
 
 
 def create_constraints_yml(plan_dir: Path):
     content = """constraints: []
-version: 1
+version: "1.0.0"
 """
     (plan_dir / "constraints.yml").write_text(content)
 

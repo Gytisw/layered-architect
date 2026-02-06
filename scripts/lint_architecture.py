@@ -342,6 +342,8 @@ class ArchitectureLinter:
             )
 
         # Check for uppercase letters (should be lowercase)
+        if self.LAYER_FILE_PATTERN.match(file.name):
+            return
         if file.stem != file.stem.lower():
             self.report.add(
                 file,

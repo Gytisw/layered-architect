@@ -838,5 +838,13 @@ jobs:
 
 ---
 
+## Decision Log
+
+1. **Decision**: [Key implementation decision]
+   - **Rationale**: [Why this decision was made]
+   - **Impact**: [What it affects downstream]
+
+---
+
 *Document Version: 1.0*  
 *Based on L3: API Gateway Component Design*

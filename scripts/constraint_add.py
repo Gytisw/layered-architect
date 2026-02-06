@@ -137,6 +137,12 @@ def generate_constraint_id(constraints: list) -> str:
 
 
 def increment_version(version: str) -> str:
+    if isinstance(version, (int, float)):
+        major = int(version)
+        return f"{major}.0.1"
+    if not isinstance(version, str):
+        return "1.0.0"
+
     parts = version.split(".")
     if len(parts) == 3:
         try:
@@ -145,6 +151,12 @@ def increment_version(version: str) -> str:
             return f"{major}.{minor}.{new_patch}"
         except ValueError:
             pass
+    if len(parts) == 2 and all(p.isdigit() for p in parts):
+        major, minor = parts
+        return f"{major}.{minor}.1"
+    if len(parts) == 1 and parts[0].isdigit():
+        major = parts[0]
+        return f"{major}.0.1"
     return version
 
 

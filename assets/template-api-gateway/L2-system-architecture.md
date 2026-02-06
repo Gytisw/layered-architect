@@ -618,5 +618,24 @@ message RateLimitExceeded {
 
 ---
 
+## Migration Strategy
+
+[If migrating from legacy systems, outline phases, risks, and rollback plan]
+
+## Tradeoff Matrix
+
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| A | | | |
+| B | | | |
+
+## Decision Log
+
+1. **Decision**: [Key architectural decision]
+   - **Rationale**: [Why this decision was made]
+   - **Impact**: [What it affects downstream]
+
+---
+
 *Document Version: 1.0*  
 *Based on L1: API Gateway Meta-Architecture*

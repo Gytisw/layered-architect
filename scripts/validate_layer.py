@@ -36,7 +36,7 @@ LAYER_REQUIREMENTS = {
         ],
     },
     "L1": {
-        "file": "01-Vision.md",
+        "file": "L1-meta-architecture.md",
         "sections": [
             "Vision",
             "Constraints",
@@ -49,7 +49,7 @@ LAYER_REQUIREMENTS = {
         "max_constraints": 7,
     },
     "L2": {
-        "file": "02-Architecture.md",
+        "file": "L2-system-architecture.md",
         "sections": [
             "Subsystems",
             "Boundaries",
@@ -61,11 +61,11 @@ LAYER_REQUIREMENTS = {
         ],
     },
     "L3": {
-        "file": "03-Components.md",
+        "file": "L3-component-design.md",
         "sections": ["Modules", "API Contracts", "Dependencies", "Decision Log"],
     },
     "L4": {
-        "file": "04-Implementation.md",
+        "file": "L4-implementation.md",
         "sections": ["File Structure", "Code Patterns", "Decision Log"],
     },
     "L5": {
@@ -96,12 +96,29 @@ def get_arch_dir():
     """Get the default architecture directory path."""
     script_dir = Path(__file__).parent
 
-    if script_dir.name == "scripts":
-        arch_dir = script_dir.parent / "architecture"
-    else:
-        arch_dir = script_dir / "architecture"
+    candidates = [
+        Path(".plan"),
+        Path("architecture"),
+        Path("docs") / "architecture",
+    ]
 
-    return arch_dir
+    # Prefer cwd-based candidates.
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    # Fallback to script-adjacent paths (useful for local dev in skill repo).
+    if script_dir.name == "scripts":
+        script_candidates = [
+            script_dir.parent / ".plan",
+            script_dir.parent / "architecture",
+        ]
+        for candidate in script_candidates:
+            if candidate.exists():
+                return candidate.resolve()
+
+    # Default to .plan for clearer error messages.
+    return Path(".plan").resolve()
 
 
 def resolve_arch_dir(path_arg):
@@ -163,6 +180,10 @@ def parse_sections(file_path):
 
 def count_constraints(content):
     """Count constraints in L1 content."""
+    ids = re.findall(r"\bCON-\d{3,}\b", content, re.IGNORECASE)
+    if ids:
+        return len(set(ids))
+
     patterns = [
         r"(?:^|\n)\s*[-*]\s+(?:Constraint:)?\s*[^\n]+",
         r"(?:^|\n)\s*\d+\.\s+(?:Constraint:)?\s*[^\n]+",
@@ -371,11 +392,11 @@ def main():
         print()
         print("Expected structure:")
         print("  layered-architect/")
-        print("    architecture/")
-        print("      01-Vision.md")
-        print("      02-Architecture.md")
-        print("      03-Components.md")
-        print("      04-Implementation.md")
+        print("    .plan/")
+        print("      L1-meta-architecture.md")
+        print("      L2-system-architecture.md")
+        print("      L3-component-design.md")
+        print("      L4-implementation.md")
         print("    scripts/")
         print("      validate_layer.py")
         logger.log("error", "arch_dir_missing", "Architecture directory not found", {"arch_dir": str(arch_dir)})

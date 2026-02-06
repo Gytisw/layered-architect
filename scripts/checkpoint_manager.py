@@ -28,9 +28,15 @@ def detect_current_state() -> dict[str, Any]:
     validation_status = {}
     last_completed = None
     current_layer = None
+    layer_files = {
+        "L1": CHECKPOINT_DIR / "L1-meta-architecture.md",
+        "L2": CHECKPOINT_DIR / "L2-system-architecture.md",
+        "L3": CHECKPOINT_DIR / "L3-component-design.md",
+        "L4": CHECKPOINT_DIR / "L4-implementation.md",
+    }
 
     for layer in LAYERS:
-        layer_file = Path(f"{layer.lower()}.md")
+        layer_file = layer_files.get(layer, CHECKPOINT_DIR / f"{layer}.md")
 
         if layer_file.exists():
             content = layer_file.read_text()

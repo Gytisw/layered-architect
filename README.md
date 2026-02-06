@@ -141,6 +141,9 @@ Optional citations:
 python scripts/map_architecture.py --apply --cite
 ```
 
+If `.plan/constraints.yml` is missing, the adapter generates a stub registry
+from any `CON-###` references in mapped sources.
+
 Unmapped files are reported for manual review.
 
 ---
