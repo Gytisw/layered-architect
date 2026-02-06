@@ -83,6 +83,15 @@ Default behavior: validation is **strict** unless the user opts into soft mode.
 
 Optional domain-specific prompts: `references/domain-profiles.md`.
 
+**Interactive requirement:** If the platform supports a Question tool, use it
+for discrete choices and do not proceed to a new layer until the user has
+provided specific, quantified answers (no vague "fast/secure/scalable").
+
+**Completion criteria:** See `references/layer-guide.md` for "definition of done"
+guidance per layer.
+
+Interactive decision trees: `references/interactive-questions.md`.
+
 ## Dependency Preflight
 
 Before using scripts, run:
@@ -183,6 +192,9 @@ constraints:
 ```
 
 See [references/constraint-examples.md](references/constraint-examples.md) for examples.
+
+If constraints exist only in L1 markdown, extract them with:
+`python scripts/extract_constraints.py .plan/L1-meta-architecture.md`
 
 ## Resources
 

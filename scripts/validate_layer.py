@@ -91,6 +91,48 @@ LAYER_REQUIREMENTS = {
     },
 }
 
+SECTION_ALIASES = {
+    # L1
+    "Vision": ["Vision & Goals", "Goals", "Problem Statement", "Overview"],
+    "Constraints": ["Requirements", "Non-Functional Requirements", "Constraints & Requirements"],
+    "Principles": ["Guiding Principles", "Design Principles"],
+    "Success Criteria": ["Success Metrics", "Success Criteria & Metrics"],
+    "Decision Log": ["Decisions", "Decision Records", "Architecture Decisions"],
+    "Risk Register": ["Risk Assessment", "Risks", "Risk Log"],
+    # L2
+    "Subsystems": ["Subsystem Inventory", "Subsystem Overview", "Components"],
+    "Boundaries": ["System Boundaries", "Boundary Definitions"],
+    "Data Flow": ["Data Flow Diagrams", "Dataflow", "Data Flows"],
+    "Interfaces": ["Interface Contracts", "Interface Definitions", "API Contracts"],
+    "Migration Strategy": ["Migration Plan", "Migration"],
+    "Tradeoff Matrix": ["Trade-Off Matrix", "Tradeoffs", "Trade-off Analysis", "Tradeoff Analysis"],
+    # L3
+    "Modules": ["Module Specifications", "Components"],
+    "API Contracts": ["API Definitions", "Interface Contracts", "Interfaces"],
+    "Dependencies": ["Dependency Graph", "Service Dependencies", "Module Dependencies"],
+    # L4
+    "File Structure": ["Project Structure", "Directory Structure"],
+    "Code Patterns": ["Implementation Patterns", "Design Patterns"],
+    "Implementation Details": ["Implementation Notes"],
+    "Validation Commands": ["Validation", "Checks", "Quality Gates"],
+}
+
+
+def normalize_header(text: str) -> str:
+    """Normalize header text for fuzzy matching."""
+    cleaned = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+    words = []
+    for word in cleaned.split():
+        if word.endswith("s") and len(word) > 3:
+            word = word[:-1]
+        words.append(word)
+    return " ".join(words)
+
+
+def section_variants(section: str) -> set[str]:
+    variants = [section] + SECTION_ALIASES.get(section, [])
+    return {normalize_header(v) for v in variants}
+
 
 def get_arch_dir():
     """Get the default architecture directory path."""
@@ -280,10 +322,10 @@ def validate_layer(arch_dir, layer):
                 warnings.append("YAML parse error")
     else:
         sections_found, content = parse_sections(file_path)
+        normalized_found = {normalize_header(s) for s in sections_found.keys()}
         for section in requirements["sections"]:
-            found = any(
-                section.lower() == s.lower() or section in s for s in sections_found.keys()
-            )
+            variants = section_variants(section)
+            found = any(v in normalized_found for v in variants)
 
             if found:
                 print(f"✓ {section} section found")

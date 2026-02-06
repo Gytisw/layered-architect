@@ -36,6 +36,10 @@ import constraint_add
 import lint_architecture
 import map_architecture
 import start_arch
+import extract_constraints
+import generate_adrs
+import generate_diagrams
+import check_consistency
 from check_constraints import ConstraintChecker, Constraint, Component
 
 
@@ -485,6 +489,45 @@ Client -> API Gateway
 
         warnings = validate_layer.validate_layer(self.arch_dir, "L2")
         self.assertTrue(any("Tradeoff Matrix" in w for w in warnings))
+
+    def test_validate_layer_l2_alias_headers(self):
+        """Test L2 validation accepts common header aliases."""
+        content = """# Architecture
+
+## Subsystem Inventory
+- Auth Service
+
+## System Boundaries
+- API Gateway boundary
+
+## Data Flow Diagrams
+Client -> API Gateway
+
+## Interface Contracts
+- REST API
+
+## Migration Plan
+Phased migration
+
+## Trade-off Matrix
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| A | | | |
+
+## Decisions
+1. Decision: Use REST
+"""
+        l2_file = self.arch_dir / "L2-system-architecture.md"
+        l2_file.write_text(content)
+
+        warnings = validate_layer.validate_layer(self.arch_dir, "L2")
+        self.assertFalse(any("Missing Subsystems section" in w for w in warnings))
+        self.assertFalse(any("Missing Boundaries section" in w for w in warnings))
+        self.assertFalse(any("Missing Data Flow section" in w for w in warnings))
+        self.assertFalse(any("Missing Interfaces section" in w for w in warnings))
+        self.assertFalse(any("Missing Migration Strategy section" in w for w in warnings))
+        self.assertFalse(any("Missing Tradeoff Matrix section" in w for w in warnings))
+        self.assertFalse(any("Missing Decision Log section" in w for w in warnings))
 
     def test_validate_layer_l5_yaml_missing_fields(self):
         """Test L5 validation warns when required YAML fields missing."""
@@ -1297,7 +1340,103 @@ class TestConstraintAdd(unittest.TestCase):
 
 
 # =============================================================================
-# Test Class 7: Lint Architecture
+# Test Class 7: Extract Constraints
+# =============================================================================
+
+
+class TestExtractConstraints(unittest.TestCase):
+    """Tests for extract_constraints.py script."""
+
+    def test_extract_constraints_from_text(self):
+        text = """| ID | Constraint | Rationale |
+|----|------------|-----------|
+| CON-001 | Response time < 200ms | Performance |
+
+- CON-002: 99.9% uptime
+"""
+        extracted = extract_constraints.extract_constraints_from_text(text)
+        self.assertIn("CON-001", extracted)
+        self.assertIn("CON-002", extracted)
+        self.assertEqual(extracted["CON-001"], "Response time < 200ms")
+
+
+# =============================================================================
+# Test Class 8: ADR Generation
+# =============================================================================
+
+
+class TestGenerateADRs(unittest.TestCase):
+    """Tests for generate_adrs.py script."""
+
+    def test_generate_adrs_from_decision_log(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        plan_dir.mkdir()
+        l1_file = plan_dir / "L1-meta-architecture.md"
+        l1_file.write_text(
+            "# Meta\n\n## Decision Log\n1. **Decision**: Use Postgres\n   - **Rationale**: ACID\n   - **Impact**: Schema design\n"
+        )
+        with patch.object(sys, "argv", ["generate_adrs.py", "--path", str(plan_dir)]):
+            generate_adrs.main()
+        adr_dir = plan_dir / "decisions"
+        self.assertTrue(adr_dir.exists())
+        self.assertTrue((adr_dir / "README.md").exists())
+
+
+# =============================================================================
+# Test Class 9: Diagram Generation
+# =============================================================================
+
+
+class TestGenerateDiagrams(unittest.TestCase):
+    """Tests for generate_diagrams.py script."""
+
+    def test_generate_mermaid(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        plan_dir.mkdir()
+        l2_file = plan_dir / "L2-system-architecture.md"
+        l2_file.write_text(
+            "# System Architecture\n\n## Subsystems\n- Auth Service\n- API Gateway\n\n## Data Flow\nAuth Service -> API Gateway\n"
+        )
+        with patch.object(
+            sys,
+            "argv",
+            ["generate_diagrams.py", "--path", str(plan_dir), "--format", "mermaid"],
+        ):
+            generate_diagrams.main()
+        diagram = plan_dir / "diagrams" / "system-flow.mmd"
+        self.assertTrue(diagram.exists())
+
+
+# =============================================================================
+# Test Class 10: Consistency Checks
+# =============================================================================
+
+
+class TestConsistencyChecks(unittest.TestCase):
+    """Tests for check_consistency.py script."""
+
+    def test_consistency_warnings(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        plan_dir.mkdir()
+        (plan_dir / "constraints.yml").write_text(
+            "version: \"1.0.0\"\nconstraints:\n  - id: CON-001\n    layer: L1\n    text: \"Test\"\n"
+        )
+        (plan_dir / "L2-system-architecture.md").write_text("CON-999")
+        with patch.object(sys, "argv", ["check_consistency.py", "--path", str(plan_dir)]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                check_consistency.main()
+                output = mock_stdout.getvalue()
+        self.assertIn("warnings", output.lower())
+
+
+# =============================================================================
+# Test Class 11: Lint Architecture
 # =============================================================================
 
 
@@ -1660,6 +1799,10 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestCheckpointManager))
     suite.addTests(loader.loadTestsFromTestCase(TestDependencyGraph))
     suite.addTests(loader.loadTestsFromTestCase(TestConstraintAdd))
+    suite.addTests(loader.loadTestsFromTestCase(TestExtractConstraints))
+    suite.addTests(loader.loadTestsFromTestCase(TestGenerateADRs))
+    suite.addTests(loader.loadTestsFromTestCase(TestGenerateDiagrams))
+    suite.addTests(loader.loadTestsFromTestCase(TestConsistencyChecks))
     suite.addTests(loader.loadTestsFromTestCase(TestLintArchitecture))
 
     # Run tests with verbosity

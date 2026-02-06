@@ -106,6 +106,13 @@ notes: ""
 ### Purpose
 Define the vision, constraints, principles, and success criteria that guide all architectural decisions.
 
+### Definition of Done (L1)
+- Vision is 1–2 sentences and names primary users
+- 3–7 measurable constraints with thresholds
+- 3–5 actionable principles
+- Success criteria expressed as metrics
+- Decision log and risk register populated with at least 1 item each
+
 ### Required Sections
 
 #### Vision
@@ -194,6 +201,15 @@ with sub-second transaction completion.
 
 ### Purpose
 Define the high-level system structure: subsystems, boundaries, and data flow between them.
+
+### Definition of Done (L2)
+- Subsystems listed with clear ownership
+- Boundaries declared (inside vs outside)
+- Data flow described end-to-end
+- Interfaces list protocol + auth + SLAs where applicable
+- Migration strategy present if legacy systems exist
+- Tradeoff matrix filled for at least 1 key decision
+- Decision log has at least 1 entry
 
 ### Required Sections
 
@@ -316,6 +332,12 @@ Client ← Response ← Transaction Processor
 
 ### Purpose
 Define the internal structure of subsystems: modules, APIs, and dependencies.
+
+### Definition of Done (L3)
+- Modules enumerated with responsibilities
+- API contracts include inputs, outputs, and errors
+- Dependency graph is acyclic
+- Decision log has at least 1 entry
 
 ### Required Sections
 
@@ -440,6 +462,14 @@ payment-gateway/
 
 ### Purpose
 Define concrete code structure, patterns, and implementation details.
+
+### Definition of Done (L4)
+- File structure is explicit (paths and module boundaries)
+- Code patterns are listed with rationale
+- Testing strategy and validation commands defined
+- Build/deploy steps summarized
+- Decision log has at least 1 entry
+- No full code implementations required; use patterns and stubs only
 
 ### Required Sections
 

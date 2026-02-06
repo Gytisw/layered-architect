@@ -3,6 +3,20 @@
 Use this guide to ask users focused questions before drafting each layer.
 Pick a **question depth** at the start (minimal or thorough).
 
+## Interactive Questioning Protocol (Required)
+
+When the platform supports an interactive Question tool, **use it** for any
+question with discrete options. Do not proceed to a new layer until:
+- The core concept is unambiguous
+- Scale or load is quantified
+- At least 3 measurable constraints exist
+- The user confirms: "Proceed to L#"
+
+If the user answers with vague language ("fast", "scalable", "secure"),
+ask a forced-choice follow-up to quantify it.
+
+Interactive flows and decision trees: `references/interactive-questions.md`.
+
 ## Start-of-Work Questions
 
 - Do you want **strict** validation (fail on warnings) or **soft** validation (warn only)?

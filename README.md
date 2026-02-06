@@ -148,6 +148,17 @@ Unmapped files are reported for manual review.
 
 ---
 
+## Constraint Registry
+
+If you already have L1 constraints in markdown, you can extract them into
+`.plan/constraints.yml`:
+
+```bash
+python scripts/extract_constraints.py .plan/L1-meta-architecture.md
+```
+
+---
+
 ## Validation & Linting
 
 Strict by default:
@@ -168,6 +179,30 @@ python scripts/validate_layer.py --soft L2
 Path-only (defaults to all layers):
 ```bash
 python scripts/validate_layer.py .plan
+```
+
+## ADR Generation
+
+Generate Architecture Decision Records from layer decision logs:
+
+```bash
+python scripts/generate_adrs.py --path .plan
+```
+
+## Diagram Generation
+
+Generate Mermaid/PlantUML diagrams from L2 data flow:
+
+```bash
+python scripts/generate_diagrams.py --path .plan --format both
+```
+
+## Consistency Checks
+
+Cross-layer semantic checks (constraints, interfaces, modules):
+
+```bash
+python scripts/check_consistency.py --path .plan
 ```
 
 Lint and dependency checks:
