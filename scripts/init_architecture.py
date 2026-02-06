@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 
+from log_utils import init_logger
 
 def print_usage():
     print("Usage: python init_architecture.py <project_name>")
@@ -152,13 +153,16 @@ validation_status: {}
 
 
 def main():
+    logger = init_logger("init_architecture")
     if len(sys.argv) < 2:
         print("Error: Project name is required.", file=sys.stderr)
+        logger.log("error", "usage", "Missing project name")
         print_usage()
 
     project_name = sys.argv[1]
     if not project_name or not project_name.strip():
         print("Error: Project name cannot be empty.", file=sys.stderr)
+        logger.log("error", "usage", "Empty project name")
         print_usage()
 
     try:
@@ -172,9 +176,16 @@ def main():
 
         print(f"✓ Created layered architecture project: {project_name}")
         print(f"✓ Plan files created in: {plan_dir}")
+        logger.log(
+            "info",
+            "init_complete",
+            "Architecture plan initialized",
+            {"project": project_name, "plan_dir": str(plan_dir)},
+        )
         sys.exit(0)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
+        logger.log("error", "init_failed", "Initialization failed", {"error": str(e)})
         sys.exit(1)
 
 

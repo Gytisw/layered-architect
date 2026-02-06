@@ -35,6 +35,13 @@ decision_readiness: not_ready
 notes: ""
 ```
 
+#### Risk Register (Required when L5 is used)
+Top risks with severity and mitigation:
+1. **Risk**: [Description]
+   - **Severity**: Low/Medium/High
+   - **Mitigation**: [Action]
+   - **Owner**: [Role/Team]
+
 ### L5: Operability & Readiness (Optional)
 
 **Use when:** moving toward delivery or when reliability, security, or cost require explicit readiness checks.
@@ -132,6 +139,19 @@ Measurable targets:
 - Time to recovery: < 1 hour
 - Code coverage: > 80%
 
+#### Decision Log (Required)
+Key decisions and rationale:
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
+
+#### Risk Register (Required)
+Top risks with severity and mitigation:
+1. **Risk**: [Description]
+   - **Severity**: Low/Medium/High
+   - **Mitigation**: [Action]
+   - **Owner**: [Role/Team]
+
 ### Limits
 - Maximum 7 constraints
 - Maximum 5 principles
@@ -203,6 +223,27 @@ Contract summaries:
 - Authentication method
 - Rate limits
 - SLAs
+
+#### Migration Strategy (Required when legacy systems exist)
+- Phased plan (strangler, parallel run, cutover)
+- Data migration approach
+- Rollback strategy
+
+#### Tradeoff Matrix (Required)
+At least two options:
+1. **Option A**: [Approach]
+   - **Pros**: [List]
+   - **Cons**: [List]
+2. **Option B**: [Approach]
+   - **Pros**: [List]
+   - **Cons**: [List]
+**Decision**: [Chosen option + rationale]
+
+#### Decision Log (Required)
+Key decisions and rationale:
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
 
 ### Limits
 - All interfaces must have contracts defined
@@ -297,6 +338,12 @@ Detailed interface specifications:
 - External service dependencies
 - Library/framework dependencies
 - Version constraints
+
+#### Decision Log (Required)
+Key decisions and rationale:
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
 
 ### Limits
 - All public interfaces need type signatures
@@ -432,6 +479,12 @@ Specific code examples:
 - Middleware setup
 - Error handling
 - Observability integration
+
+#### Decision Log (Required)
+Key decisions and rationale:
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
 
 ### Limits
 - Concrete file paths required

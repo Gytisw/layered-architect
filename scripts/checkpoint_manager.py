@@ -17,6 +17,7 @@ except ImportError:
     print("Error: PyYAML required. Install with: pip install pyyaml")
     sys.exit(1)
 
+from log_utils import init_logger
 
 CHECKPOINT_DIR = Path(".plan")
 CHECKPOINT_FILE = CHECKPOINT_DIR / "checkpoint.yml"
@@ -93,6 +94,7 @@ def ensure_checkpoint_dir() -> None:
 
 def save_checkpoint() -> None:
     ensure_checkpoint_dir()
+    logger = init_logger("checkpoint_manager")
 
     state = detect_current_state()
 
@@ -103,6 +105,12 @@ def save_checkpoint() -> None:
     print(f"  Current Layer: {state['current_layer']}")
     print(f"  Last Completed: {state['last_completed'] or 'None'}")
     print(f"  Timestamp: {state['timestamp']}")
+    logger.log(
+        "info",
+        "checkpoint_saved",
+        "Checkpoint saved",
+        {"current_layer": state["current_layer"], "last_completed": state["last_completed"]},
+    )
 
 
 def load_checkpoint() -> dict[str, Any] | None:

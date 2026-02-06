@@ -34,6 +34,8 @@ import checkpoint_manager
 import dependency_graph
 import constraint_add
 import lint_architecture
+import map_architecture
+import start_arch
 from check_constraints import ConstraintChecker, Constraint, Component
 
 
@@ -430,6 +432,83 @@ More content
         # Should return list (might be empty or have warnings)
         self.assertIsInstance(warnings, list)
 
+    def test_validate_layer_l1_missing_decision_log(self):
+        """Test L1 validation warns when Decision Log missing."""
+        content = """# Vision
+
+## Vision
+Test
+
+## Constraints
+- Constraint: Response time < 200ms
+- Constraint: 99.9% uptime required
+- Constraint: Support 1000 concurrent users
+
+## Principles
+1. Performance first
+2. Security by design
+3. Scalability built-in
+
+## Success Criteria
+- Handle 10,000 requests/second
+- 99.99% availability
+"""
+        l1_file = self.arch_dir / "01-Vision.md"
+        l1_file.write_text(content)
+
+        warnings = validate_layer.validate_layer(self.arch_dir, "L1")
+        self.assertTrue(any("Decision Log" in w for w in warnings))
+
+    def test_validate_layer_l2_missing_tradeoff_matrix(self):
+        """Test L2 validation warns when Tradeoff Matrix missing."""
+        content = """# Architecture
+
+## Subsystems
+- Auth Service
+
+## Boundaries
+- API Gateway boundary
+
+## Data Flow
+Client -> API Gateway
+
+## Interfaces
+- REST API
+
+## Decision Log
+1. Decision: Use REST
+"""
+        l2_file = self.arch_dir / "02-Architecture.md"
+        l2_file.write_text(content)
+
+        warnings = validate_layer.validate_layer(self.arch_dir, "L2")
+        self.assertTrue(any("Tradeoff Matrix" in w for w in warnings))
+
+    def test_validate_layer_l5_yaml_missing_fields(self):
+        """Test L5 validation warns when required YAML fields missing."""
+        content = """# L5
+
+```yaml
+layer: L5
+title: Test
+slos: []
+observability: {}
+security_controls: []
+deployment: {}
+data_protection: {}
+cost_guardrails: []
+readiness_checks: []
+readiness_status: not_ready
+residual_risks: []
+```
+"""
+        l5_file = self.arch_dir / "L5-operability-readiness.md"
+        l5_file.write_text(content)
+
+        warnings = validate_layer.validate_layer(self.arch_dir, "L5")
+        self.assertTrue(any("Missing YAML field: decision_log" in w for w in warnings))
+        self.assertTrue(any("Missing YAML field: risk_register" in w for w in warnings))
+
     def test_validate_layer_unknown_layer(self):
         """Test validation of unknown layer."""
         with patch("sys.stdout", new=StringIO()) as mock_stdout:
@@ -449,7 +528,7 @@ More content
         l1_file = self.arch_dir / "01-Vision.md"
         l1_file.write_text(TestFixtures.get_valid_l1_content())
 
-        with patch.object(sys, "argv", ["validate_layer.py", "L1"]):
+        with patch.object(sys, "argv", ["validate_layer.py", "--soft", "L1"]):
             with patch.object(
                 validate_layer, "get_arch_dir", return_value=self.arch_dir
             ):
@@ -462,10 +541,12 @@ More content
     def test_main_no_args(self):
         """Test main function with no arguments."""
         with patch.object(sys, "argv", ["validate_layer.py"]):
-            with patch("sys.stdout", new=StringIO()):
-                with self.assertRaises(SystemExit) as context:
-                    validate_layer.main()
-                self.assertEqual(context.exception.code, 1)
+            with patch.object(validate_layer, "get_arch_dir", return_value=self.arch_dir):
+                with patch("sys.stdout", new=StringIO()):
+                    with self.assertRaises(SystemExit) as context:
+                        validate_layer.main()
+                    # No layers found in empty arch_dir -> validation fails
+                    self.assertEqual(context.exception.code, 3)
 
     def test_soft_gate_behavior(self):
         """Test that validation returns 0 even with warnings."""
@@ -473,7 +554,7 @@ More content
         l1_file = self.arch_dir / "01-Vision.md"
         l1_file.write_text("# Vision\n\nOnly header here")
 
-        with patch.object(sys, "argv", ["validate_layer.py", "L1"]):
+        with patch.object(sys, "argv", ["validate_layer.py", "--soft", "L1"]):
             with patch.object(
                 validate_layer, "get_arch_dir", return_value=self.arch_dir
             ):
@@ -1411,6 +1492,97 @@ TODO: Add more content
         self.assertEqual(linter.report.files_checked, 1)
         # Should have TODO warning
         self.assertGreater(len(linter.report.warnings()), 0)
+
+
+# =============================================================================
+# Test Class 8: Mapping Adapter
+# =============================================================================
+
+
+class TestMapArchitecture(unittest.TestCase):
+    """Tests for map_architecture.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.original_cwd = os.getcwd()
+        os.chdir(self.temp_dir)
+
+    def tearDown(self):
+        os.chdir(self.original_cwd)
+
+    def test_extract_summary_lines_with_source(self):
+        """Test summary extraction with citations."""
+        path = Path("architecture-overview.md")
+        path.write_text("# Overview\n\n- Key point\n")
+
+        lines = map_architecture.extract_summary_lines_with_source(
+            path, Path(self.temp_dir), cite=True
+        )
+        self.assertTrue(any("(source:" in line for line in lines))
+
+    def test_suggest_and_apply_mapping(self):
+        """Test suggest+apply generates .plan outputs."""
+        Path("architecture-overview.md").write_text("# Overview\n\nText\n")
+
+        with patch.object(sys, "argv", ["map_architecture.py", "--suggest"]):
+            map_architecture.main()
+
+        self.assertTrue(Path("plan.map.yml").exists())
+
+        with patch.object(sys, "argv", ["map_architecture.py", "--apply"]):
+            map_architecture.main()
+
+        self.assertTrue((Path(".plan") / "L1-meta-architecture.md").exists())
+        mapping = yaml.safe_load(Path("plan.map.yml").read_text())
+        self.assertIn("unmapped", mapping)
+
+
+# =============================================================================
+# Test Class 9: Guided Start
+# =============================================================================
+
+
+class TestStartArch(unittest.TestCase):
+    """Tests for start_arch.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.original_cwd = os.getcwd()
+        os.chdir(self.temp_dir)
+
+    def tearDown(self):
+        os.chdir(self.original_cwd)
+
+    def test_start_arch_detects_docs(self):
+        """Detect existing docs without .plan."""
+        Path("Docs").mkdir()
+        Path("Docs/overview.md").write_text("# Overview")
+
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            start_arch.main()
+            output = mock_stdout.getvalue()
+
+        self.assertIn("existing documentation is present", output)
+
+    def test_start_arch_detects_plan(self):
+        """Detect existing .plan directory."""
+        Path(".plan").mkdir()
+
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            start_arch.main()
+            output = mock_stdout.getvalue()
+
+        self.assertIn("Detected existing .plan directory", output)
+
+    def test_start_arch_fresh(self):
+        """Detect fresh start with no docs."""
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            start_arch.main()
+            output = mock_stdout.getvalue()
+
+        self.assertIn("No .plan directory and no documentation detected", output)
 
     def test_find_architecture_files(self):
         """Test finding architecture files."""

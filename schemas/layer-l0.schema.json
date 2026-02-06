@@ -13,7 +13,8 @@
     "assumptions",
     "open_questions",
     "success_criteria_draft",
-    "decision_readiness"
+    "decision_readiness",
+    "decision_log"
   ],
   "properties": {
     "layer": {
@@ -106,6 +107,22 @@
     },
     "decision_readiness": {
       "enum": ["not_ready", "ready"]
+    },
+    "decision_log": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "decision", "rationale", "impact"],
+        "properties": {
+          "id": { "type": "string", "minLength": 3 },
+          "decision": { "type": "string", "minLength": 3 },
+          "rationale": { "type": "string", "minLength": 3 },
+          "impact": { "type": "string", "minLength": 3 }
+        }
+      }
     },
     "notes": {
       "type": "string"

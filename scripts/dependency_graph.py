@@ -13,6 +13,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Set, Tuple, Optional
 
+from log_utils import init_logger
 
 # Dependency patterns to search for in markdown
 DEPENDENCY_PATTERNS = [
@@ -353,6 +354,7 @@ def main():
     )
 
     args = parser.parse_args()
+    logger = init_logger("dependency_graph")
 
     base_path = Path(args.path).resolve()
 
@@ -361,6 +363,7 @@ def main():
 
     if not l2_content and not l3_content:
         print("Error: No architecture files found", file=sys.stderr)
+        logger.log("error", "no_files", "No architecture files found", {"path": str(base_path)})
         sys.exit(1)
 
     # Parse dependencies
@@ -396,6 +399,12 @@ def main():
             f"Total components: {len(set(all_deps.keys()) | set().union(*all_deps.values()) if all_deps else [])}"
         )
         print(f"Total dependencies: {total_deps}")
+        logger.log(
+            "info",
+            "dependency_check_complete",
+            "Dependency check complete",
+            {"components": len(all_deps), "dependencies": total_deps, "cycles": len(cycles)},
+        )
 
         if cycles:
             print(f"\nCycles detected: {len(cycles)}")
@@ -413,6 +422,12 @@ def main():
             print(f"DOT output written to {output_path}")
         else:
             print(dot_output)
+        logger.log(
+            "info",
+            "dependency_graph_generated",
+            "Dependency graph generated",
+            {"cycles": len(cycles), "output": str(args.output) if args.output else "stdout"},
+        )
 
         # Return appropriate exit code
         if cycles:

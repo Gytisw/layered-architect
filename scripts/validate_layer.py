@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
 Layer validation script for layered architecture.
-Implements SOFT gates - warnings only, returns 0 even with issues.
+Default behavior is STRICT (non-zero exit when warnings exist).
+Use --soft to allow warnings without failure.
 """
 
 import sys
 import re
 import os
+import argparse
 from pathlib import Path
 
 try:
     import yaml
 except ImportError:
     yaml = None
+
+from log_utils import init_logger
 
 LAYER_REQUIREMENTS = {
     "L0": {
@@ -28,25 +32,41 @@ LAYER_REQUIREMENTS = {
             "open_questions",
             "success_criteria_draft",
             "decision_readiness",
+            "decision_log",
         ],
     },
     "L1": {
         "file": "01-Vision.md",
-        "sections": ["Vision", "Constraints", "Principles", "Success Criteria"],
+        "sections": [
+            "Vision",
+            "Constraints",
+            "Principles",
+            "Success Criteria",
+            "Decision Log",
+            "Risk Register",
+        ],
         "min_constraints": 3,
         "max_constraints": 7,
     },
     "L2": {
         "file": "02-Architecture.md",
-        "sections": ["Subsystems", "Boundaries", "Data Flow", "Interfaces"],
+        "sections": [
+            "Subsystems",
+            "Boundaries",
+            "Data Flow",
+            "Interfaces",
+            "Migration Strategy",
+            "Tradeoff Matrix",
+            "Decision Log",
+        ],
     },
     "L3": {
         "file": "03-Components.md",
-        "sections": ["Modules", "API Contracts", "Dependencies"],
+        "sections": ["Modules", "API Contracts", "Dependencies", "Decision Log"],
     },
     "L4": {
         "file": "04-Implementation.md",
-        "sections": ["File Structure", "Code Patterns"],
+        "sections": ["File Structure", "Code Patterns", "Decision Log"],
     },
     "L5": {
         "file": "L5-operability-readiness.md",
@@ -63,13 +83,17 @@ LAYER_REQUIREMENTS = {
             "readiness_checks",
             "readiness_status",
             "residual_risks",
+            "decision_log",
+            "risk_register",
+            "threat_model",
+            "compliance_evidence",
         ],
     },
 }
 
 
 def get_arch_dir():
-    """Get the architecture directory path."""
+    """Get the default architecture directory path."""
     script_dir = Path(__file__).parent
 
     if script_dir.name == "scripts":
@@ -78,6 +102,21 @@ def get_arch_dir():
         arch_dir = script_dir / "architecture"
 
     return arch_dir
+
+
+def resolve_arch_dir(path_arg):
+    """Resolve architecture directory from a user-provided path."""
+    if not path_arg:
+        return None
+
+    path = Path(path_arg).expanduser()
+    if path.is_dir():
+        return path
+
+    if path.is_file():
+        return path.parent
+
+    return None
 
 
 def find_layer_file(arch_dir, layer):
@@ -195,7 +234,7 @@ def validate_layer(arch_dir, layer):
             return None
 
         content = file_path.read_text(encoding="utf-8")
-        yaml_match = re.search(r"```yaml\\s*(.*?)```", content, re.DOTALL)
+        yaml_match = re.search(r"```yaml\s*(.*?)```", content, re.DOTALL)
         if not yaml_match:
             print("⚠ WARNING: YAML block not found")
             warnings.append("YAML block not found")
@@ -261,21 +300,71 @@ def validate_layer(arch_dir, layer):
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
-        print("Usage: validate_layer.py <L0|L1|L2|L3|L4|L5>")
-        print()
-        print("Validates a specified layer in the layered architecture.")
-        print("Returns exit code 0 even with warnings (soft gate behavior).")
-        print()
-        print("Examples:")
-        print("  python validate_layer.py L1")
-        print("  python validate_layer.py L2")
-        print("  python validate_layer.py L0")
-        print("  python validate_layer.py L5")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Validate a specified layer in the layered architecture."
+    )
+    # Optional positional target: layer or path
+    parser.add_argument(
+        "--soft",
+        action="store_true",
+        help="Soft gate: return 0 even with warnings",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable JSONL logging",
+    )
 
-    layer = sys.argv[1].upper()
-    arch_dir = get_arch_dir()
+    parser.add_argument(
+        "target",
+        nargs="?",
+        help="Layer (L0-L5) or a path to a plan/architecture directory",
+    )
+    parser.add_argument(
+        "--layer",
+        help="Explicit layer to validate (L0-L5). Overrides positional target.",
+    )
+    parser.add_argument(
+        "--path",
+        help="Path to a plan/architecture directory. Overrides positional target.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Validate all layers in order",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Strict gate (default). Non-zero exit if warnings found.",
+    )
+    args = parser.parse_args()
+    logger = init_logger("validate_layer", enabled=not args.no_log)
+    strict = args.strict or not args.soft
+
+    target = args.layer or args.target
+    path_arg = args.path
+
+    layer = None
+    arch_dir = None
+
+    if target:
+        upper = target.upper()
+        if upper in LAYER_REQUIREMENTS:
+            layer = upper
+        else:
+            path_arg = path_arg or target
+
+    arch_dir = resolve_arch_dir(path_arg) if path_arg else get_arch_dir()
+    if arch_dir is None:
+        print("✗ ERROR: Invalid path provided for architecture directory")
+        logger.log(
+            "error",
+            "arch_dir_invalid",
+            "Invalid architecture directory path",
+            {"path": path_arg},
+        )
+        sys.exit(2)
 
     if not arch_dir.exists():
         print(f"✗ ERROR: Architecture directory not found: {arch_dir}")
@@ -289,13 +378,38 @@ def main():
         print("      04-Implementation.md")
         print("    scripts/")
         print("      validate_layer.py")
+        logger.log("error", "arch_dir_missing", "Architecture directory not found", {"arch_dir": str(arch_dir)})
         sys.exit(2)
 
-    result = validate_layer(arch_dir, layer)
+    if args.all:
+        layers = ["L0", "L1", "L2", "L3", "L4", "L5"]
+    elif layer:
+        layers = [layer]
+    else:
+        # If only a path was provided, default to all layers.
+        layers = ["L0", "L1", "L2", "L3", "L4", "L5"]
 
-    if result is None:
-        sys.exit(3)
+    all_warnings = []
+    for current_layer in layers:
+        result = validate_layer(arch_dir, current_layer)
+        if result is None:
+            logger.log(
+                "error",
+                "validation_failed",
+                "Layer validation failed",
+                {"layer": current_layer},
+            )
+            sys.exit(3)
+        all_warnings.extend(result)
 
+    logger.log(
+        "info",
+        "validation_complete",
+        "Layer validation complete",
+        {"layers": layers, "warnings": len(all_warnings)},
+    )
+    if strict and all_warnings:
+        sys.exit(1)
     sys.exit(0)
 
 

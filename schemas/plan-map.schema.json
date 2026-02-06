@@ -42,6 +42,11 @@
         "L5": { "$ref": "#/$defs/layer" }
       }
     }
+    ,
+    "unmapped": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
   },
   "$defs": {
     "layer": {

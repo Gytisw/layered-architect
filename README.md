@@ -1,28 +1,58 @@
 # Layered Architect
 
-Agent-first skill for planning and reviewing complex software architectures using a layered approach. Designed to keep context small, reduce hallucinations, and make architecture work repeatable across agentic tools.
+Agent-first architecture planning skill that produces professional, audit-friendly system designs. Built for modern agentic tools, with strict validation, decision logs, and traceable constraints.
 
-## Highlights
+**Status:** Production-ready for agent workflows  
+**Scope:** L0–L5 layered architecture + PRD alignment + adaptation of legacy docs
 
-- 4 core layers (L1–L4) with optional L0/L5 gates
-- Constraint registry with traceability
-- Validation and linting scripts (soft gates by default)
-- Universal adapter to map existing docs into L0–L5 summaries
-- Templates and references to keep outputs consistent
+---
+
+## Why this exists
+
+Architecture work is often inconsistent, non-auditable, and too hard to review. This skill makes it structured, repeatable, and agent-friendly without bloating your workflow.
+
+---
+
+## Core Capabilities
+
+- **Layered Architecture (L0–L5)** with strict validation
+- **Structured Decision Logs** for cross-validation
+- **Tradeoff Matrix + Risk Register** baked into the process
+- **PRD generation** aligned to finalized architecture
+- **Universal adapter** to ingest existing docs
+- **Audit-friendly logs** in JSONL
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+  A["L0 Problem Framing (Optional)"] --> B["L1 Meta-Architecture"]
+  B --> C["L2 System Architecture"]
+  C --> D["L3 Component Design"]
+  D --> E["L4 Implementation"]
+  E --> F["L5 Operability & Readiness (Optional)"]
+  E --> G["PRD (Post-Architecture)"]
+```
+
+---
 
 ## Repo Layout
 
-- `SKILL.md` Skill instructions and platform notes
-- `assets/` Templates and example architectures
-- `references/` Guides and validation criteria
+- `SKILL.md` Agent instructions and flow
+- `assets/` Templates and examples
+- `references/` Guides, validation, question sets, domain profiles
 - `schemas/` JSON schemas for layers and mappings
-- `scripts/` Validation, linting, and adapter tools
+- `scripts/` Tooling (validation, linting, adapter)
+
+---
 
 ## Installation
 
 ### Codex CLI / IDE extensions
 
-Codex loads skills from repo-scoped and user-scoped locations. Place this folder at one of the locations below and restart Codex:
+Place this folder in one of the supported skill locations and restart Codex:
 
 - Repo-scoped: `$CWD/.codex/skills/layered-architect/`
 - Repo-scoped (parent): `$CWD/../.codex/skills/layered-architect/`
@@ -30,85 +60,193 @@ Codex loads skills from repo-scoped and user-scoped locations. Place this folder
 - User-scoped: `$CODEX_HOME/skills/layered-architect/` (default `~/.codex/skills/`)
 - Admin: `/etc/codex/skills/layered-architect/`
 
-See the official Codex skills docs for the full list of supported locations and scopes.
-
 ### Other tools (OpenCode, Claude Code, Gemini CLI, Cursor)
 
-Place the `layered-architect` folder into your tool’s skill/plugins directory and restart the tool. See your tool’s docs for the exact path and permission settings.
+Place the `layered-architect` folder into your tool’s skill/plugins directory and restart.  
+Check your tool’s docs for permission settings in plan modes.
+
+---
 
 ## Quick Start (New Architecture)
 
-1. Initialize a `.plan` directory with layer files:
-   - `python scripts/init_architecture.py my-project`
-2. Fill each layer, validating after each step:
-   - `python scripts/validate_layer.py L1`
-   - `python scripts/validate_layer.py L2`
-   - `python scripts/validate_layer.py L3`
-   - `python scripts/validate_layer.py L4`
-3. Track constraints and check for conflicts:
-   - `python scripts/check_constraints.py`
+1. Initialize a plan:
+```bash
+python scripts/init_architecture.py my-project
+```
+
+2. Fill and validate layers:
+```bash
+python scripts/validate_layer.py L1
+python scripts/validate_layer.py L2
+python scripts/validate_layer.py L3
+python scripts/validate_layer.py L4
+```
+
+3. Check constraints:
+```bash
+python scripts/check_constraints.py
+```
+
+---
+
+## Guided Start (Fresh vs Existing Docs)
+
+```bash
+python scripts/start_arch.py
+```
+
+- If `.plan/` exists → continue with validation  
+- If docs exist but no `.plan/` → use mapping adapter  
+- If no docs → initialize from scratch
+
+---
 
 ## Optional Layers (L0/L5)
 
-Use optional layers only when triggers apply:
+Use only when triggers apply:
 
-- L0 Problem Framing: unclear requirements, fuzzy scope, conflicting goals
-- L5 Operability & Readiness: delivery readiness, high reliability/security, cost guardrails
+- **L0 Problem Framing:** unclear scope, conflicting goals  
+- **L5 Operability & Readiness:** delivery readiness, compliance, cost controls
 
-Templates are in:
-
+Templates:
 - `assets/template-l0-problem-framing.md`
 - `assets/template-l5-operability-readiness.md`
 
+---
+
+## PRD Stage (Post-Architecture)
+
+Generate a PRD aligned to the finalized architecture:
+
+- `assets/template-prd.md`
+
+---
+
 ## Universal Adapter (Existing Docs → L0–L5)
 
-Use the adapter to map any repo’s documentation into L0–L5 summaries without changing original files.
+1. Suggest mapping:
+```bash
+python scripts/map_architecture.py --suggest
+```
 
-1. Generate a suggested mapping:
-   - `python scripts/map_architecture.py --suggest`
-2. Review/edit `plan.map.yml`
-3. Generate summaries into `.plan/`:
-   - `python scripts/map_architecture.py --apply`
+2. Edit `plan.map.yml`
 
-Outputs:
+3. Generate summaries:
+```bash
+python scripts/map_architecture.py --apply
+```
 
-- `.plan/L0-problem-framing.md`
-- `.plan/L1-meta-architecture.md`
-- `.plan/L2-system-architecture.md`
-- `.plan/L3-component-design.md`
-- `.plan/L4-implementation.md`
-- `.plan/L5-operability-readiness.md`
+Optional citations:
+```bash
+python scripts/map_architecture.py --apply --cite
+```
 
-## Validation and Linting
+Unmapped files are reported for manual review.
 
-- Validate a layer (soft gate):
-  - `python scripts/validate_layer.py L0`
-  - `python scripts/validate_layer.py L1`
-  - `python scripts/validate_layer.py L2`
-  - `python scripts/validate_layer.py L3`
-  - `python scripts/validate_layer.py L4`
-  - `python scripts/validate_layer.py L5`
-- Lint architecture markdown:
-  - `python scripts/lint_architecture.py .`
-- Check dependency cycles:
-  - `python scripts/dependency_graph.py --check --path .plan`
+---
+
+## Validation & Linting
+
+Strict by default:
+```bash
+python scripts/validate_layer.py L2
+```
+
+Validate all layers (path-aware):
+```bash
+python scripts/validate_layer.py --all --path .plan
+```
+
+Soft mode:
+```bash
+python scripts/validate_layer.py --soft L2
+```
+
+Path-only (defaults to all layers):
+```bash
+python scripts/validate_layer.py .plan
+```
+
+Lint and dependency checks:
+```bash
+python scripts/lint_architecture.py .
+python scripts/dependency_graph.py --check --path .plan
+```
+
+---
+
+## Logging
+
+Scripts write JSONL logs to:
+```
+.plan/logs/*.jsonl
+```
+
+Each entry includes timestamp, run_id, script, event, and structured data.
+
+---
 
 ## Requirements
 
 - Python 3
-- PyYAML for YAML-based scripts:
-  - `pip install pyyaml`
+- PyYAML:
+```bash
+pip install pyyaml
+```
 
-## Agent Usage Tips
+Preflight (optional):
+```bash
+python scripts/check_deps.py
+```
 
-- Keep the agent’s context scoped to the current layer plus the parent summary.
-- Use the adapter to normalize legacy docs before validating.
-- Run validations in build/accept-edits modes if plan modes block file writes.
+Install with:
+```bash
+pip install -r requirements.txt
+uv pip install -r requirements.txt
+```
+
+---
+
+## OpenCode API Test (Real Server)
+
+Scripted test flow against a running OpenCode server:
+
+```bash
+scripts/opencode_test.sh
+```
+
+Environment overrides:
+```bash
+OPENCODE_HOST=http://localhost:4096
+OPENCODE_REPO=/path/to/repo
+OPENCODE_AGENT=sisyphus
+OPENCODE_TIMEOUT=60
+```
+
+What it does:
+- Creates a session
+- Prompts the agent to detect repo type and ask guided questions
+- Auto-answers the question tool
+- Requests strict validation (read-only)
+- Prints responses
+
+Requires `curl` and `jq`.
+
+---
+
+## Domain Profiles (Optional)
+
+Use domain-specific prompts in:
+- `references/domain-profiles.md`
+
+---
 
 ## Contributing
 
-Issues and PRs welcome. Keep changes small, agent-friendly, and consistent with the layered schema.
+Issues and PRs are welcome. Keep changes small, agent-friendly, and aligned to schemas.
+
+---
 
 ## License
 
-Add a LICENSE file before publishing if you want to allow reuse.
+Add a `LICENSE` file before publishing if you want to allow reuse.

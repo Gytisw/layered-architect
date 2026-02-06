@@ -64,6 +64,36 @@ Use optional layers only when triggers apply to avoid bloat:
 - **L0 Problem Framing (Optional):** Use when requirements are unclear, scope is fuzzy, or goals conflict. If skipped, record a short skip reason.
 - **L5 Operability & Readiness (Optional):** Use when moving toward delivery or when reliability, security, or cost require explicit readiness checks. If skipped, record a short skip reason.
 
+## Guided Questioning (Agent Flow)
+
+At the start, ask the user:
+- Do you want **strict** validation (fail on warnings) or **soft** validation (warn only)?
+- Do you want **minimal** or **thorough** questioning?
+
+Question sets by layer live in: `references/question-guide.md`.
+
+Default behavior: validation is **strict** unless the user opts into soft mode.
+
+Optional domain-specific prompts: `references/domain-profiles.md`.
+
+## Dependency Preflight
+
+Before using scripts, run:
+- `python scripts/check_deps.py`
+
+If missing deps are reported, install:
+- `pip install -r requirements.txt` or `uv pip install -r requirements.txt`
+
+## Guided Start (Fresh vs Existing Docs)
+
+If the project status is unclear, run:
+- `python scripts/start_arch.py`
+
+## PRD Stage (Post-Architecture)
+
+After L1–L4 (and L5 if used) are finalized, generate a PRD aligned to the architecture using:
+- `assets/template-prd.md`
+
 ## Agent Usage (L0/L5)
 
 If L0 or L5 triggers apply, use the templates in:
@@ -155,58 +185,6 @@ See [references/constraint-examples.md](references/constraint-examples.md) for e
 ## Cross-Platform Compatibility
 
 This skill is designed as a **Universal Package** that works across multiple agentic coding platforms.
-
-### Supported Platforms
-
-| Platform | Status | Installation Path |
-|----------|--------|-------------------|
-| **OpenCode** | Native | `.opencode/skills/layered-architect/` |
-| **Claude Code** | Compatible | `.claude/skills/LayeredArchitect/` |
-| **OpenAI Codex** | Compatible | `.agents/skills/layered-architect/` |
-| **Google Antigravity** | Compatible | `.agent/skills/layered-architect/` |
-| **Gemini CLI** | Compatible | `.gemini/skills/layered-architect/` |
-| **Cursor** | Via translation | `.cursor/skills/layered-architect/` |
-
-### Universal Package Features
-
-This skill follows the **Agent Skills Specification** (agentskills.io):
-- Standard YAML frontmatter format
-- Markdown-based instructions
-- Platform-agnostic Python scripts
-- No proprietary API dependencies
-
-### Using with Other Agents
-
-**Option 1: Direct Usage (OpenCode, Codex, Antigravity, Gemini)**
-1. Copy `layered-architect/` directory to your agent's skills folder
-2. Agent will auto-detect and load the skill
-3. Use trigger phrases like "design architecture for..."
-
-**Option 2: Translation (Cursor, Copilot, Windsurf)**
-```bash
-# Install SkillKit
-npm install -g skillkit@latest
-
-# Translate to target platform
-skillkit translate layered-architect --to cursor
-```
-
-**Option 3: MCP Server (Future)**
-The validation scripts can be exposed as an MCP server for maximum compatibility with Claude Desktop, Goose, and other MCP-enabled tools.
-
-### Platform-Specific Adaptations
-
-**For Claude Code:**
-- Rename directory to `LayeredArchitect/` (TitleCase)
-- Skill will auto-activate on architecture-related prompts
-
-**For Codex:**
-- Place in `.agents/skills/` directory
-- Use `/skills` command to view loaded skills
-
-**For Gemini CLI:**
-- Place in `.gemini/skills/` directory
-- Create `GEMINI.md` for project-specific context (optional)
 
 ## Best Practices
 

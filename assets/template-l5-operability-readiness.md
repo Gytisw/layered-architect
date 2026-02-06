@@ -44,5 +44,21 @@ residual_risks:
 - "Known risk not yet mitigated"
 dependencies:
 - "External service or vendor dependency"
+decision_log:
+- id: "DEC-001"
+  decision: "Key decision"
+  rationale: "Why"
+  impact: "Downstream impact"
+risk_register:
+- risk: "Risk description"
+  severity: "High"
+  mitigation: "Mitigation plan"
+  owner: "Role/Team"
+threat_model:
+- threat: "Threat description"
+  control: "Mitigating control"
+compliance_evidence:
+- requirement: "Compliance requirement"
+  evidence: "Evidence artifact or control"
 notes: ""
 ```

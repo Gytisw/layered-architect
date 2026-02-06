@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from log_utils import init_logger
 VALID_LAYERS = ["L1", "L2", "L3", "L4"]
 VALID_TYPES = [
     "performance",
@@ -148,11 +149,13 @@ def increment_version(version: str) -> str:
 
 
 def main():
+    logger = init_logger("constraint_add")
     args = parse_args()
 
     is_valid, error_msg = validate_constraint_text(args.text)
     if not is_valid:
         print(f"✗ Validation error: {error_msg}")
+        logger.log("error", "validation_failed", "Constraint validation failed", {"error": error_msg})
         sys.exit(1)
 
     data = load_constraints()
@@ -160,6 +163,7 @@ def main():
 
     if check_duplicate(constraints, args.text):
         print("✗ Error: A constraint with this text already exists")
+        logger.log("error", "duplicate_constraint", "Duplicate constraint", {"text": args.text})
         sys.exit(1)
 
     constraint_id = generate_constraint_id(constraints)
@@ -183,6 +187,12 @@ def main():
     print(f"  Layer: {args.layer}")
     print(f"  Type: {args.type}")
     print(f"  Text: {args.text}")
+    logger.log(
+        "info",
+        "constraint_added",
+        "Constraint added",
+        {"id": constraint_id, "layer": args.layer, "type": args.type},
+    )
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ except ImportError:
     print("Error: PyYAML required. Install with: pip install pyyaml")
     sys.exit(1)
 
+from log_utils import init_logger
 
 @dataclass
 class Constraint:
@@ -318,6 +319,7 @@ class ConstraintChecker:
 
 def main():
     """Main entry point."""
+    logger = init_logger("check_constraints")
     # Determine project root (script is in skills/layered-architect/scripts/)
     script_dir = Path(__file__).parent
     project_root = script_dir.parent.parent.parent
@@ -326,6 +328,12 @@ def main():
     report = checker.run()
 
     print(report)
+    logger.log(
+        "info",
+        "constraint_check_complete",
+        "Constraint check complete",
+        {"warnings": len(checker.warnings), "errors": len(checker.errors)},
+    )
 
     # Exit with error code if there are errors (not warnings)
     if checker.errors:

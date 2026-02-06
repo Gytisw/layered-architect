@@ -21,5 +21,10 @@ open_questions:
 success_criteria_draft:
 - "Measurable or verifiable outcome"
 decision_readiness: not_ready
+decision_log:
+- id: "DEC-001"
+  decision: "Key decision"
+  rationale: "Why"
+  impact: "Downstream impact"
 notes: ""
 ```

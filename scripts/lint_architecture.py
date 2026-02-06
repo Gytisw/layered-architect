@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Set, Optional, Tuple
 from collections import defaultdict
 
+from log_utils import init_logger
 
 @dataclass
 class LintIssue:
@@ -557,14 +558,26 @@ def main():
     args = parser.parse_args()
 
     base_path = Path(args.path).resolve()
+    logger = init_logger("lint_architecture")
 
     if not base_path.exists():
         print(f"Error: Path does not exist: {base_path}")
+        logger.log("error", "path_missing", "Base path does not exist", {"path": str(base_path)})
         sys.exit(1)
 
     linter = ArchitectureLinter(base_path)
     exit_code = linter.run()
 
+    logger.log(
+        "info",
+        "lint_complete",
+        "Lint complete",
+        {
+            "files_checked": linter.report.files_checked,
+            "errors": len(linter.report.errors()),
+            "warnings": len(linter.report.warnings()),
+        },
+    )
     if args.strict and linter.report.warnings():
         exit_code = 1
 

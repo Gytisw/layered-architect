@@ -19,6 +19,7 @@ except ImportError:
     print("Error: PyYAML required. Install with: pip install pyyaml")
     sys.exit(1)
 
+from log_utils import init_logger
 
 DEFAULT_MAP_PATH = "plan.map.yml"
 DEFAULT_OUT_DIR = ".plan"
@@ -145,12 +146,13 @@ def score_layer_for_path(path: Path) -> Tuple[str, int]:
 
 
 def suggest_mapping(root: Path) -> Dict:
-    mapping: Dict[str, Dict] = {"version": 1, "root": str(root), "layers": {}}
+    mapping: Dict[str, Dict] = {"version": 1, "root": str(root), "layers": {}, "unmapped": []}
     files = iter_markdown_files(root)
 
     for file_path in files:
         layer, score = score_layer_for_path(file_path)
         if not layer or score == 0:
+            mapping["unmapped"].append(str(file_path))
             continue
         mapping["layers"].setdefault(layer, {"sources": []})
         mapping["layers"][layer]["sources"].append(str(file_path))
@@ -239,6 +241,14 @@ def extract_summary_lines(path: Path) -> List[str]:
             seen.add(key)
             deduped.append(item.strip())
     return deduped
+
+
+def extract_summary_lines_with_source(path: Path, root: Path, cite: bool) -> List[str]:
+    lines = extract_summary_lines(path)
+    if not cite:
+        return lines
+    rel = path.resolve().relative_to(root.resolve())
+    return [f"{line} (source: {rel})" for line in lines]
 
 
 def limit_summary(lines: List[str], max_words: int, max_bullets: int) -> List[str]:
@@ -431,8 +441,14 @@ def main() -> None:
     )
     parser.add_argument("--max-words", type=int, default=600, help="Max words per layer")
     parser.add_argument("--max-bullets", type=int, default=25, help="Max bullets per layer")
+    parser.add_argument(
+        "--cite",
+        action="store_true",
+        help="Append source path to each summary bullet",
+    )
 
     args = parser.parse_args()
+    logger = init_logger("map_architecture")
 
     map_path = Path(args.map)
 
@@ -440,11 +456,18 @@ def main() -> None:
         mapping = suggest_mapping(Path(".").resolve())
         map_path.write_text(yaml.dump(mapping, sort_keys=False), encoding="utf-8")
         print(f"Suggested mapping written to {map_path}")
+        logger.log(
+            "info",
+            "mapping_suggested",
+            "Suggested mapping written",
+            {"map_path": str(map_path)},
+        )
         if not args.apply:
             return
 
     if not map_path.exists():
         print(f"Error: mapping file not found: {map_path}", file=sys.stderr)
+        logger.log("error", "map_missing", "Mapping file not found", {"map_path": str(map_path)})
         sys.exit(1)
 
     mapping = load_mapping(map_path)
@@ -452,17 +475,27 @@ def main() -> None:
     options = mapping.get("options", {})
     max_words = options.get("max_words", args.max_words)
     max_bullets = options.get("max_bullets", args.max_bullets)
+    cite = options.get("cite", args.cite)
+    unmapped = mapping.get("unmapped", [])
 
     out_dir = Path(args.out_dir)
     if not args.apply:
         print("Dry run (use --apply to generate .plan files)")
+        logger.log(
+            "info",
+            "dry_run",
+            "Dry run for mapping",
+            {"map_path": str(map_path), "layers": list(mapping.get("layers", {}).keys())},
+        )
+        if mapping.get("unmapped"):
+            print(f"Unmapped files: {len(mapping.get('unmapped'))}")
 
     for layer, layer_cfg in mapping.get("layers", {}).items():
         sources = normalize_sources(layer_cfg)
         resolved_sources = [(root / src).resolve() for src in sources]
         summary = []
         for src in resolved_sources:
-            summary.extend(extract_summary_lines(src))
+            summary.extend(extract_summary_lines_with_source(src, root, cite))
         summary = limit_summary(summary, max_words=max_words, max_bullets=max_bullets)
 
         if not args.apply:
@@ -491,6 +524,18 @@ def main() -> None:
 
     if args.apply:
         print(f"Generated layer summaries in {out_dir}")
+        if unmapped:
+            print(f"Unmapped files: {len(unmapped)}")
+        logger.log(
+            "info",
+            "mapping_applied",
+            "Generated layer summaries",
+            {
+                "out_dir": str(out_dir),
+                "layers": list(mapping.get("layers", {}).keys()),
+                "unmapped_count": len(unmapped),
+            },
+        )
 
 
 if __name__ == "__main__":
