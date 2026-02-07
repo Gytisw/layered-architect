@@ -148,6 +148,16 @@ Unmapped files are reported for manual review.
 
 ---
 
+## Import Existing Drafts
+
+If you already drafted architecture content elsewhere:
+
+```bash
+python scripts/import_plan.py --source /path/to/draft.md --target .plan
+```
+
+---
+
 ## Constraint Registry
 
 If you already have L1 constraints in markdown, you can extract them into
@@ -181,6 +191,16 @@ Path-only (defaults to all layers):
 python scripts/validate_layer.py .plan
 ```
 
+Single-command validation (agent-friendly):
+```bash
+python scripts/validate_all.py --path .plan --format json
+```
+
+Read-only mode (avoid logs):
+```bash
+LAYERED_ARCHITECT_READONLY=1 python scripts/validate_all.py --path .plan
+```
+
 ## ADR Generation
 
 Generate Architecture Decision Records from layer decision logs:
@@ -204,6 +224,10 @@ Cross-layer semantic checks (constraints, interfaces, modules):
 ```bash
 python scripts/check_consistency.py --path .plan
 ```
+
+## Agent Guide
+
+See `references/agent-usage-guide.md` for agent-specific workflow guidance.
 
 Lint and dependency checks:
 ```bash

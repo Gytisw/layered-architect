@@ -6,7 +6,10 @@ Checks for common issues in architecture files.
 
 import re
 import sys
-import yaml
+try:
+    import yaml
+except ImportError:
+    yaml = None
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Dict, Set, Optional, Tuple
@@ -96,6 +99,15 @@ class ArchitectureLinter:
 
         self.constraints_file = self.find_constraints_file()
         if not self.constraints_file:
+            return constraint_ids
+        if yaml is None:
+            self.report.add(
+                self.constraints_file,
+                0,
+                "WARNING",
+                "PyYAML missing; skipping constraints.yml parsing",
+                "constraints",
+            )
             return constraint_ids
 
         try:
@@ -534,7 +546,8 @@ class ArchitectureLinter:
                 f"\n{'✓' if error_count == 0 else '!'} Lint complete - {', '.join(parts)}"
             )
 
-        # Always return 0 (soft gates)
+        if error_count:
+            return 1
         return 0
 
 

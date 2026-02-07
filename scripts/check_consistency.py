@@ -16,6 +16,7 @@ except ImportError:
     sys.exit(1)
 
 from log_utils import init_logger
+from path_utils import resolve_plan_dir
 
 CONSTRAINT_ID_PATTERN = re.compile(r"\bCON-\d{3,}\b")
 
@@ -127,7 +128,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    plan_dir = Path(args.path).resolve()
+    plan_dir = resolve_plan_dir(args.path) or Path(args.path).resolve()
     if not plan_dir.exists():
         print(f"Error: plan directory not found: {plan_dir}")
         return 1

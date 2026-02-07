@@ -92,6 +92,8 @@ guidance per layer.
 
 Interactive decision trees: `references/interactive-questions.md`.
 
+Agent workflow guide: `references/agent-usage-guide.md`.
+
 ## Dependency Preflight
 
 Before using scripts, run:
@@ -157,6 +159,11 @@ Mapping schema reference: `schemas/plan-map.schema.json`
    ```bash
    python scripts/checkpoint_manager.py save
    ```
+
+Agent-friendly alternative:
+```bash
+python scripts/validate_all.py --path .plan --format json
+```
 
 ## Layer Isolation Protocol
 

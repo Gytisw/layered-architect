@@ -51,5 +51,7 @@ class JsonlLogger:
 
 
 def init_logger(script_name: str, log_path: Optional[str] = None, enabled: bool = True) -> JsonlLogger:
+    if os.getenv("LAYERED_ARCHITECT_NO_LOG") or os.getenv("LAYERED_ARCHITECT_READONLY"):
+        enabled = False
     path = Path(log_path) if log_path else None
     return JsonlLogger(script_name=script_name, log_path=path, enabled=enabled)

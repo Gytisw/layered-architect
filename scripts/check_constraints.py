@@ -25,6 +25,7 @@ except ImportError:
     sys.exit(1)
 
 from log_utils import init_logger
+from path_utils import resolve_plan_dir
 
 @dataclass
 class Constraint:
@@ -55,7 +56,10 @@ class ConstraintChecker:
 
     def load_constraints_registry(self) -> bool:
         """Load constraints.yml from .plan/ directory."""
-        constraints_file = self.project_root / ".plan" / "constraints.yml"
+        plan_dir = resolve_plan_dir(str(self.project_root))
+        constraints_file = (
+            plan_dir / "constraints.yml" if plan_dir else self.project_root / "constraints.yml"
+        )
 
         if not constraints_file.exists():
             self.errors.append(f"Constraints file not found: {constraints_file}")
@@ -107,7 +111,7 @@ class ConstraintChecker:
 
     def scan_layer_files(self) -> int:
         """Scan all L1-L4 markdown files for constraint references."""
-        plan_dir = self.project_root / ".plan"
+        plan_dir = resolve_plan_dir(str(self.project_root)) or (self.project_root / ".plan")
         files_scanned = 0
 
         layer_files = {
@@ -133,10 +137,39 @@ class ConstraintChecker:
             # Parse components (## headers)
             component_pattern = r"^##\s+(.+)$"
             components = re.findall(component_pattern, content, re.MULTILINE)
+            ignore_headers = {
+                "overview",
+                "vision",
+                "constraints",
+                "principles",
+                "success criteria",
+                "decision log",
+                "risk register",
+                "risk assessment",
+                "subsystems",
+                "subsystem inventory",
+                "boundaries",
+                "data flow",
+                "interfaces",
+                "migration strategy",
+                "tradeoff matrix",
+                "modules",
+                "api contracts",
+                "dependencies",
+                "implementation",
+                "file structure",
+                "code patterns",
+                "testing strategy",
+                "build & deployment",
+                "build and deployment",
+            }
 
             for comp_name in components:
-                component = Component(name=comp_name.strip(), layer=layer)
-                self.components[comp_name.strip()].append(component)
+                clean_name = comp_name.strip()
+                if clean_name.lower() in ignore_headers:
+                    continue
+                component = Component(name=clean_name, layer=layer)
+                self.components[clean_name].append(component)
 
             # Find constraint references (e.g., CON-001, CON-002)
             constraint_refs = re.findall(r"(CON-\d{3})", content)
@@ -309,6 +342,9 @@ class ConstraintChecker:
         # Errors
         for error in self.errors:
             lines.append(f"✗ ERROR: {error}")
+            if "Constraints file not found" in error:
+                lines.append("  AGENT FIX: Ensure .plan/constraints.yml exists or run:")
+                lines.append("    python scripts/extract_constraints.py .plan/L1-meta-architecture.md")
 
         # Summary
         if not self.warnings and not self.errors:

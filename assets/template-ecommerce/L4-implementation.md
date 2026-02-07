@@ -983,6 +983,19 @@ jobs:
 
 ---
 
+## Implementation Details
+
+- [Key implementation notes, scaling constraints, or performance considerations]
+
+## Validation Commands
+
+```bash
+# Example validation commands
+python scripts/validate_layer.py --layer L4 --path .plan
+```
+
+---
+
 ## Decision Log
 
 1. **Decision**: [Key implementation decision]

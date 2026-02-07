@@ -1,7 +1,10 @@
 # Interactive Question Flows
 
-Use these with the platform Question tool. They are designed to eliminate
+Use these with the platform Question tool (if supported). They are designed to eliminate
 open-ended answers early and force measurable inputs before L1.
+
+If the platform does not support interactive questions, translate these to
+concise text prompts and require specific, quantified answers.
 
 ## Core Concept (Required)
 

@@ -17,6 +17,7 @@ except ImportError:
     yaml = None
 
 from log_utils import init_logger
+from path_utils import resolve_plan_dir
 
 LAYER_REQUIREMENTS = {
     "L0": {
@@ -59,6 +60,7 @@ LAYER_REQUIREMENTS = {
             "Tradeoff Matrix",
             "Decision Log",
         ],
+        "optional_sections": ["Migration Strategy"],
     },
     "L3": {
         "file": "L3-component-design.md",
@@ -66,7 +68,13 @@ LAYER_REQUIREMENTS = {
     },
     "L4": {
         "file": "L4-implementation.md",
-        "sections": ["File Structure", "Code Patterns", "Decision Log"],
+        "sections": [
+            "File Structure",
+            "Code Patterns",
+            "Implementation Details",
+            "Validation Commands",
+            "Decision Log",
+        ],
     },
     "L5": {
         "file": "L5-operability-readiness.md",
@@ -136,46 +144,15 @@ def section_variants(section: str) -> set[str]:
 
 def get_arch_dir():
     """Get the default architecture directory path."""
-    script_dir = Path(__file__).parent
-
-    candidates = [
-        Path(".plan"),
-        Path("architecture"),
-        Path("docs") / "architecture",
-    ]
-
-    # Prefer cwd-based candidates.
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate.resolve()
-
-    # Fallback to script-adjacent paths (useful for local dev in skill repo).
-    if script_dir.name == "scripts":
-        script_candidates = [
-            script_dir.parent / ".plan",
-            script_dir.parent / "architecture",
-        ]
-        for candidate in script_candidates:
-            if candidate.exists():
-                return candidate.resolve()
-
-    # Default to .plan for clearer error messages.
+    plan_dir = resolve_plan_dir(None)
+    if plan_dir:
+        return plan_dir
     return Path(".plan").resolve()
 
 
 def resolve_arch_dir(path_arg):
     """Resolve architecture directory from a user-provided path."""
-    if not path_arg:
-        return None
-
-    path = Path(path_arg).expanduser()
-    if path.is_dir():
-        return path
-
-    if path.is_file():
-        return path.parent
-
-    return None
+    return resolve_plan_dir(path_arg)
 
 
 def find_layer_file(arch_dir, layer):
@@ -220,11 +197,35 @@ def parse_sections(file_path):
     return sections_found, content
 
 
+def extract_section_content(content: str, section_name: str) -> str:
+    header_pattern = re.compile(r"^#{2,4}\s+(.+)$")
+    variants = section_variants(section_name)
+    in_section = False
+    lines: list[str] = []
+    for line in content.splitlines():
+        match = header_pattern.match(line.strip())
+        if match:
+            title = match.group(1).strip()
+            if normalize_header(title) in variants:
+                in_section = True
+                lines = []
+                continue
+            if in_section:
+                break
+        if in_section:
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def count_constraints(content):
     """Count constraints in L1 content."""
     ids = re.findall(r"\bCON-\d{3,}\b", content, re.IGNORECASE)
     if ids:
         return len(set(ids))
+
+    constraints_block = extract_section_content(content, "Constraints")
+    if not constraints_block:
+        constraints_block = content
 
     patterns = [
         r"(?:^|\n)\s*[-*]\s+(?:Constraint:)?\s*[^\n]+",
@@ -233,7 +234,7 @@ def count_constraints(content):
 
     total = 0
     for pattern in patterns:
-        matches = re.findall(pattern, content, re.IGNORECASE)
+        matches = re.findall(pattern, constraints_block, re.IGNORECASE)
         total += len(matches)
 
     return total
@@ -260,7 +261,7 @@ def check_previous_layer_complete(arch_dir, current_layer):
     return prev_file is not None
 
 
-def validate_layer(arch_dir, layer):
+def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
     """Validate a specific layer and return list of issues."""
     warnings = []
 
@@ -272,9 +273,16 @@ def validate_layer(arch_dir, layer):
     file_path = find_layer_file(arch_dir, layer)
 
     if not file_path:
+        if optional_missing_ok and layer in {"L0", "L5"}:
+            print(f"ℹ INFO: Optional layer {layer} file not found; skipping")
+            return []
         print(f"✗ ERROR: Layer {layer} file not found")
         print(f"  Expected: {LAYER_REQUIREMENTS[layer]['file']}")
         print(f"  in: {arch_dir}")
+        print()
+        print("AGENT FIX:")
+        print(f"  python scripts/validate_layer.py --layer {layer} --path /path/to/.plan")
+        print(f"  cd /path/to/project && python scripts/validate_layer.py --layer {layer}")
         return None
 
     print(f"Validating {layer}...")
@@ -323,6 +331,7 @@ def validate_layer(arch_dir, layer):
     else:
         sections_found, content = parse_sections(file_path)
         normalized_found = {normalize_header(s) for s in sections_found.keys()}
+        optional_sections = set(requirements.get("optional_sections", []))
         for section in requirements["sections"]:
             variants = section_variants(section)
             found = any(v in normalized_found for v in variants)
@@ -330,6 +339,9 @@ def validate_layer(arch_dir, layer):
             if found:
                 print(f"✓ {section} section found")
             else:
+                if section in optional_sections:
+                    print(f"ℹ INFO: Optional {section} section not found")
+                    continue
                 print(f"⚠ WARNING: {section} section not found")
                 warnings.append(f"Missing {section} section")
 
@@ -441,6 +453,10 @@ def main():
         print("      L4-implementation.md")
         print("    scripts/")
         print("      validate_layer.py")
+        print()
+        print("AGENT FIX:")
+        print("  cd /path/to/project && python scripts/validate_layer.py --all")
+        print("  python scripts/validate_layer.py --all --path /path/to/.plan")
         logger.log("error", "arch_dir_missing", "Architecture directory not found", {"arch_dir": str(arch_dir)})
         sys.exit(2)
 
@@ -454,7 +470,8 @@ def main():
 
     all_warnings = []
     for current_layer in layers:
-        result = validate_layer(arch_dir, current_layer)
+        optional_missing_ok = current_layer in {"L0", "L5"} and (args.all or layer is None)
+        result = validate_layer(arch_dir, current_layer, optional_missing_ok=optional_missing_ok)
         if result is None:
             logger.log(
                 "error",

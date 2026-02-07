@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from log_utils import init_logger
+from path_utils import resolve_plan_dir
 
 SUBSYSTEM_HEADERS = ["Subsystems", "Subsystem Inventory", "Subsystem Overview", "Components"]
 DATAFLOW_HEADERS = ["Data Flow", "Data Flow Diagrams", "Dataflow", "Data Flows"]
@@ -103,7 +104,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    plan_dir = Path(args.path).resolve()
+    plan_dir = resolve_plan_dir(args.path) or Path(args.path).resolve()
     l2_file = plan_dir / "L2-system-architecture.md"
     if not l2_file.exists():
         print(f"Error: L2 file not found: {l2_file}")

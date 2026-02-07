@@ -167,6 +167,14 @@ project/
 - [Pattern 1] (e.g., Repository, CQRS, Hexagonal)
 - [Pattern 2]
 
+## Implementation Details
+- [Key implementation notes, constraints, or performance considerations]
+
+## Validation Commands
+```bash
+# Example: unit tests, lint, validation scripts
+```
+
 ## Implementation Order
 1. [ ] [First task to implement]
 2. [ ] [Second task to implement]
@@ -202,6 +210,11 @@ validation_status: {}
     (plan_dir / "checkpoint.yml").write_text(content)
 
 
+def create_support_dirs(plan_dir: Path):
+    (plan_dir / "decisions").mkdir(parents=True, exist_ok=True)
+    (plan_dir / "diagrams").mkdir(parents=True, exist_ok=True)
+
+
 def main():
     logger = init_logger("init_architecture")
     if len(sys.argv) < 2:
@@ -223,6 +236,7 @@ def main():
         create_l4_implementation(plan_dir)
         create_constraints_yml(plan_dir)
         create_checkpoint_yml(plan_dir)
+        create_support_dirs(plan_dir)
 
         print(f"✓ Created layered architecture project: {project_name}")
         print(f"✓ Plan files created in: {plan_dir}")

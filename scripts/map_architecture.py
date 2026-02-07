@@ -154,10 +154,17 @@ def suggest_mapping(root: Path) -> Dict:
     for file_path in files:
         layer, score = score_layer_for_path(file_path)
         if not layer or score == 0:
-            mapping["unmapped"].append(str(file_path))
+            try:
+                mapping["unmapped"].append(str(file_path.resolve().relative_to(root.resolve())))
+            except Exception:
+                mapping["unmapped"].append(str(file_path))
             continue
         mapping["layers"].setdefault(layer, {"sources": []})
-        mapping["layers"][layer]["sources"].append(str(file_path))
+        try:
+            rel = file_path.resolve().relative_to(root.resolve())
+            mapping["layers"][layer]["sources"].append(str(rel))
+        except Exception:
+            mapping["layers"][layer]["sources"].append(str(file_path))
 
     return mapping
 
@@ -460,6 +467,7 @@ def write_layer_file(
     out_dir: Path,
     layer: str,
     sources: List[Path],
+    source_labels: List[str],
     summary_lines: List[str],
     l0_yaml: Dict = None,
     l5_yaml: Dict = None,
@@ -481,7 +489,7 @@ def write_layer_file(
         lines.append("")
 
     lines.append("## Sources")
-    for src in sources:
+    for src in source_labels:
         lines.append(f"- {src}")
     lines.append("")
     lines.append("## Summary")
@@ -590,6 +598,7 @@ def main() -> None:
             out_dir=out_dir,
             layer=layer,
             sources=resolved_sources,
+            source_labels=[str(s) for s in sources],
             summary_lines=summary,
             l0_yaml=l0_yaml,
             l5_yaml=l5_yaml,

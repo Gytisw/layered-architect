@@ -40,6 +40,8 @@ import extract_constraints
 import generate_adrs
 import generate_diagrams
 import check_consistency
+import validate_all
+import import_plan
 from check_constraints import ConstraintChecker, Constraint, Component
 
 
@@ -528,6 +530,11 @@ Phased migration
         self.assertFalse(any("Missing Migration Strategy section" in w for w in warnings))
         self.assertFalse(any("Missing Tradeoff Matrix section" in w for w in warnings))
         self.assertFalse(any("Missing Decision Log section" in w for w in warnings))
+
+    def test_validate_layer_optional_missing_ok(self):
+        """Test optional layer missing does not error when allowed."""
+        result = validate_layer.validate_layer(self.arch_dir, "L0", optional_missing_ok=True)
+        self.assertIsInstance(result, list)
 
     def test_validate_layer_l5_yaml_missing_fields(self):
         """Test L5 validation warns when required YAML fields missing."""
@@ -1193,6 +1200,14 @@ class TestConstraintAdd(unittest.TestCase):
         self.assertFalse(is_valid)
         self.assertIn("measurable", error)
 
+    def test_validate_constraint_text_non_metric_type(self):
+        """Test non-metric types allow non-numeric constraints."""
+        is_valid, error = constraint_add.validate_constraint_text(
+            "Must comply with SOC2", "compliance"
+        )
+        self.assertTrue(is_valid)
+        self.assertEqual(error, "")
+
     def test_load_constraints_new_file(self):
         """Test loading when constraints file doesn't exist."""
         data = constraint_add.load_constraints()
@@ -1436,7 +1451,56 @@ class TestConsistencyChecks(unittest.TestCase):
 
 
 # =============================================================================
-# Test Class 11: Lint Architecture
+# Test Class 11: Validate All
+# =============================================================================
+
+
+class TestValidateAll(unittest.TestCase):
+    """Tests for validate_all.py script."""
+
+    def test_validate_all_json_output(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        plan_dir.mkdir()
+        # Minimal files to allow validate_layer to run
+        (plan_dir / "L1-meta-architecture.md").write_text("# L1\n\n## Vision\nx\n")
+        (plan_dir / "L2-system-architecture.md").write_text("# L2\n\n## Subsystems\n- a\n")
+        (plan_dir / "L3-component-design.md").write_text("# L3\n\n## Modules\n- a\n")
+        (plan_dir / "L4-implementation.md").write_text("# L4\n\n## File Structure\nx\n")
+
+        with patch.object(sys, "argv", ["validate_all.py", "--path", str(plan_dir), "--format", "json"]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                validate_all.main()
+                output = mock_stdout.getvalue()
+        self.assertIn("\"overall\"", output)
+
+
+# =============================================================================
+# Test Class 12: Import Plan
+# =============================================================================
+
+
+class TestImportPlan(unittest.TestCase):
+    """Tests for import_plan.py script."""
+
+    def test_import_single_layer(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        source = Path(temp_dir) / "draft.md"
+        source.write_text("# L1 Meta-Architecture\n\nContent")
+        target = Path(temp_dir) / ".plan"
+        with patch.object(
+            sys,
+            "argv",
+            ["import_plan.py", "--source", str(source), "--target", str(target), "--layer", "L1"],
+        ):
+            import_plan.main()
+        self.assertTrue((target / "L1-meta-architecture.md").exists())
+
+
+# =============================================================================
+# Test Class 13: Lint Architecture
 # =============================================================================
 
 
@@ -1803,6 +1867,8 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateADRs))
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateDiagrams))
     suite.addTests(loader.loadTestsFromTestCase(TestConsistencyChecks))
+    suite.addTests(loader.loadTestsFromTestCase(TestValidateAll))
+    suite.addTests(loader.loadTestsFromTestCase(TestImportPlan))
     suite.addTests(loader.loadTestsFromTestCase(TestLintArchitecture))
 
     # Run tests with verbosity

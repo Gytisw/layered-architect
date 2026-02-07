@@ -20,6 +20,11 @@ VALID_TYPES = [
     "scalability",
     "reliability",
     "maintainability",
+    "compliance",
+    "technology",
+    "team",
+    "budget",
+    "timeline",
 ]
 VAGUE_TERMS = [
     "fast",
@@ -55,7 +60,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def validate_constraint_text(text: str) -> tuple[bool, str]:
+NON_METRIC_TYPES = {"compliance", "technology", "team", "budget", "timeline"}
+
+
+def validate_constraint_text(text: str, constraint_type: str | None = None) -> tuple[bool, str]:
     text_lower = text.lower()
 
     for term in VAGUE_TERMS:
@@ -87,7 +95,9 @@ def validate_constraint_text(text: str) -> tuple[bool, str]:
         ]
     )
 
-    if not (has_metric or has_comparison or has_units):
+    if constraint_type not in NON_METRIC_TYPES and not (
+        has_metric or has_comparison or has_units
+    ):
         return False, (
             "Constraint text must be measurable. "
             "Include numbers, comparison operators (</>), or units (ms, %, etc.)"
@@ -164,7 +174,7 @@ def main():
     logger = init_logger("constraint_add")
     args = parse_args()
 
-    is_valid, error_msg = validate_constraint_text(args.text)
+    is_valid, error_msg = validate_constraint_text(args.text, args.type)
     if not is_valid:
         print(f"✗ Validation error: {error_msg}")
         logger.log("error", "validation_failed", "Constraint validation failed", {"error": error_msg})
