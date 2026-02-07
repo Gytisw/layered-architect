@@ -162,9 +162,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    plan_dir = resolve_plan_dir(args.path) or Path(args.path).resolve()
-    if not plan_dir.exists():
-        print(f"Error: plan directory not found: {plan_dir}")
+    plan_dir = resolve_plan_dir(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print(f"Error: .plan directory not found (searched from {args.path})")
+        print("AGENT FIX:")
+        print("  cd /path/to/project && python scripts/generate_adrs.py --path .plan")
+        print("  python scripts/generate_adrs.py --path /path/to/project/.plan")
         return 1
 
     out_dir = plan_dir / args.out

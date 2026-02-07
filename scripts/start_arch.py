@@ -54,7 +54,8 @@ def main() -> None:
 
     print("No .plan directory and no documentation detected.")
     print("Suggested next steps:")
-    print("- Initialize: python scripts/init_architecture.py <project_name>")
+    print("- Initialize in current repo: python scripts/init_architecture.py --path .")
+    print("- Or create a new folder: python scripts/init_architecture.py <project_name>")
     logger.log("info", "fresh_start", "No .plan or docs detected")
 
 

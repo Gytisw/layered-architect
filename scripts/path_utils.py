@@ -27,14 +27,13 @@ def find_plan_dir(start: Path) -> Optional[Path]:
 
 def resolve_plan_dir(path_arg: Optional[str]) -> Optional[Path]:
     if path_arg:
-        path = Path(path_arg).expanduser()
-        if path.is_dir() and path.name == ".plan":
-            return path.resolve()
-        if path.is_dir():
-            plan = path / ".plan"
-            if plan.exists():
-                return plan.resolve()
-            return path.resolve()
+        path = Path(path_arg).expanduser().resolve()
         if path.is_file():
-            return path.parent.resolve()
+            path = path.parent
+        if path.name == ".plan" and path.exists():
+            return path
+        candidate = path / ".plan"
+        if candidate.exists():
+            return candidate.resolve()
+        return find_plan_dir(path)
     return find_plan_dir(Path("."))

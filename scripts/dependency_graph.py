@@ -13,7 +13,13 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Set, Tuple, Optional
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
 from log_utils import init_logger
+from path_utils import resolve_plan_dir
 
 # Dependency patterns to search for in markdown
 DEPENDENCY_PATTERNS = [
@@ -287,6 +293,44 @@ def generate_dot(dependencies: Dict[str, List[str]]) -> str:
     return "\n".join(lines)
 
 
+def load_dependencies_yaml(plan_dir: Path) -> Optional[Dict[str, List[str]]]:
+    dep_file = plan_dir / "dependencies.yml"
+    if not dep_file.exists():
+        return None
+    if yaml is None:
+        print("Error: PyYAML required to parse dependencies.yml", file=sys.stderr)
+        return None
+
+    try:
+        data = yaml.safe_load(dep_file.read_text()) or {}
+    except Exception as exc:
+        print(f"Error: Failed to parse dependencies.yml: {exc}", file=sys.stderr)
+        return None
+
+    nodes = []
+    for item in data.get("nodes", []):
+        if isinstance(item, str):
+            nodes.append(item.strip())
+        elif isinstance(item, dict):
+            name = item.get("name") or item.get("id")
+            if name:
+                nodes.append(str(name).strip())
+
+    deps: Dict[str, List[str]] = {n: [] for n in nodes}
+    for edge in data.get("edges", []):
+        if isinstance(edge, dict):
+            src = edge.get("from") or edge.get("src") or edge.get("source")
+            dst = edge.get("to") or edge.get("dst") or edge.get("target")
+            if src and dst:
+                deps.setdefault(str(src).strip(), []).append(str(dst).strip())
+        elif isinstance(edge, str):
+            parts = re.split(r"\s*->\s*|\s*=>\s*", edge.strip())
+            if len(parts) == 2:
+                deps.setdefault(parts[0].strip(), []).append(parts[1].strip())
+
+    return deps
+
+
 def load_architecture_files(base_path: Path) -> Tuple[str, str]:
     """Load L2 and L3 architecture files."""
     l2_path = base_path / "L2-system-architecture.md"
@@ -356,22 +400,34 @@ def main():
     args = parser.parse_args()
     logger = init_logger("dependency_graph")
 
-    base_path = Path(args.path).resolve()
+    plan_dir = resolve_plan_dir(args.path)
+    if plan_dir:
+        deps = load_dependencies_yaml(plan_dir)
+        if deps is not None:
+            all_deps = deps
+        else:
+            all_deps = {}
+    else:
+        plan_dir = None
+        all_deps = {}
 
-    # Load architecture files
-    l2_content, l3_content = load_architecture_files(base_path)
+    if not all_deps:
+        base_path = Path(args.path).resolve()
 
-    if not l2_content and not l3_content:
-        print("Error: No architecture files found", file=sys.stderr)
-        logger.log("error", "no_files", "No architecture files found", {"path": str(base_path)})
-        sys.exit(1)
+        # Load architecture files
+        l2_content, l3_content = load_architecture_files(base_path)
 
-    # Parse dependencies
-    l2_deps = parse_dependencies(l2_content)
-    l3_deps = parse_dependencies(l3_content)
+        if not l2_content and not l3_content:
+            print("Error: No architecture files found", file=sys.stderr)
+            logger.log("error", "no_files", "No architecture files found", {"path": str(base_path)})
+            sys.exit(1)
 
-    # Merge dependencies
-    all_deps = merge_dependencies(l2_deps, l3_deps)
+        # Parse dependencies
+        l2_deps = parse_dependencies(l2_content)
+        l3_deps = parse_dependencies(l3_content)
+
+        # Merge dependencies
+        all_deps = merge_dependencies(l2_deps, l3_deps)
 
     if not all_deps:
         if args.check:

@@ -299,15 +299,29 @@ class ArchitectureLinter:
                     )
 
     def check_empty_sections(self, file: Path, lines: List[str]):
-        """Detect empty sections (header followed by next header)."""
+        """Detect empty sections (header with no content before next same/higher header)."""
         for i in range(len(lines)):
-            if self.HEADER_PATTERN.match(lines[i]):
-                # Check if next non-empty line is also a header
-                j = i + 1
-                while j < len(lines) and not lines[j].strip():
-                    j += 1
+            match = self.HEADER_PATTERN.match(lines[i])
+            if not match:
+                continue
+            level = len(match.group(1))
+            # Skip H1 as a container title
+            if level == 1:
+                continue
 
-                if j < len(lines) and self.HEADER_PATTERN.match(lines[j]):
+            # Find next non-empty line
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+
+            if j < len(lines):
+                next_match = self.HEADER_PATTERN.match(lines[j])
+                if next_match:
+                    next_level = len(next_match.group(1))
+                    # If the next header is deeper, treat current as a container
+                    if next_level > level:
+                        continue
+                    # Next header is same/higher level => empty
                     self.report.add(
                         file,
                         i + 1,
@@ -408,7 +422,9 @@ class ArchitectureLinter:
                         "antipatterns",
                     )
 
-            # Check for broken links
+            # Check for broken links (skip task list checkboxes)
+            if re.search(r"^\s*(?:[-*]|\d+\.)\s+\[[ xX]\]", line):
+                continue
             if re.search(r"\]\s*\[", line) and not re.search(r"\]\[.+\]", line):
                 self.report.add(
                     file, i, "WARNING", "Possibly broken link syntax", "markdown"

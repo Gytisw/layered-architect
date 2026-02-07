@@ -4,22 +4,23 @@ Initialize a layered architecture project structure.
 
 Usage:
     python init_architecture.py <project_name>
+    python init_architecture.py --path /path/to/project
+    python init_architecture.py --here
 """
 
-import os
+import argparse
 import sys
 from pathlib import Path
 
 from log_utils import init_logger
 
-def print_usage():
-    print("Usage: python init_architecture.py <project_name>")
-    print("\nInitialize a layered architecture project with plan files.")
-    sys.exit(1)
 
-
-def create_directory_structure(project_name: str) -> Path:
-    plan_dir = Path(project_name) / ".plan"
+def create_directory_structure(project_root: str | Path) -> Path:
+    root = Path(project_root)
+    if root.name == ".plan":
+        plan_dir = root
+    else:
+        plan_dir = root / ".plan"
     plan_dir.mkdir(parents=True, exist_ok=True)
     return plan_dir
 
@@ -137,6 +138,7 @@ class ComponentB:
 
 ## Dependencies
 - Component A depends on [Component B]
+- Canonical graph lives in `.plan/dependencies.yml`
 
 ## Decision Log
 1. **Decision**: [Short statement]
@@ -210,6 +212,22 @@ validation_status: {}
     (plan_dir / "checkpoint.yml").write_text(content)
 
 
+def create_dependencies_yml(plan_dir: Path):
+    content = """version: "1.0.0"
+status: draft
+nodes:
+  - name: component_a
+  - name: component_b
+edges:
+  - from: component_a
+    to: component_b
+constraints:
+  acyclic: true
+notes: ""
+"""
+    (plan_dir / "dependencies.yml").write_text(content)
+
+
 def create_support_dirs(plan_dir: Path):
     (plan_dir / "decisions").mkdir(parents=True, exist_ok=True)
     (plan_dir / "diagrams").mkdir(parents=True, exist_ok=True)
@@ -217,34 +235,67 @@ def create_support_dirs(plan_dir: Path):
 
 def main():
     logger = init_logger("init_architecture")
-    if len(sys.argv) < 2:
-        print("Error: Project name is required.", file=sys.stderr)
-        logger.log("error", "usage", "Missing project name")
-        print_usage()
+    parser = argparse.ArgumentParser(
+        description="Initialize layered architecture plan files."
+    )
+    parser.add_argument(
+        "project",
+        nargs="?",
+        help="Project name or path (creates a new directory).",
+    )
+    parser.add_argument(
+        "--path",
+        help="Path to an existing project root or .plan directory.",
+    )
+    parser.add_argument(
+        "--here",
+        action="store_true",
+        help="Initialize .plan in the current directory.",
+    )
+    args = parser.parse_args()
 
-    project_name = sys.argv[1]
-    if not project_name or not project_name.strip():
-        print("Error: Project name cannot be empty.", file=sys.stderr)
-        logger.log("error", "usage", "Empty project name")
-        print_usage()
+    if args.here and args.path:
+        print("Error: --here and --path cannot be used together.", file=sys.stderr)
+        logger.log("error", "usage", "Conflicting flags: --here and --path")
+        sys.exit(1)
+
+    if args.here:
+        project_root = Path(".").resolve()
+    elif args.path:
+        project_root = Path(args.path).expanduser().resolve()
+    elif args.project and args.project.strip():
+        project_root = Path(args.project).expanduser().resolve()
+        cwd = Path(".").resolve()
+        if project_root.parent == cwd and project_root.name == cwd.name:
+            print(
+                "Note: You appear to be inside a project with the same name. "
+                "Use --path . to initialize in the current directory and avoid nesting."
+            )
+    else:
+        print("Error: Project name or --path is required.", file=sys.stderr)
+        logger.log("error", "usage", "Missing project name/path")
+        parser.print_usage()
+        sys.exit(1)
 
     try:
-        plan_dir = create_directory_structure(project_name)
+        plan_dir = create_directory_structure(project_root)
         create_l1_meta_architecture(plan_dir)
         create_l2_system_architecture(plan_dir)
         create_l3_component_design(plan_dir)
         create_l4_implementation(plan_dir)
         create_constraints_yml(plan_dir)
         create_checkpoint_yml(plan_dir)
+        create_dependencies_yml(plan_dir)
         create_support_dirs(plan_dir)
 
-        print(f"✓ Created layered architecture project: {project_name}")
+        project_label = project_root.name if project_root.name != ".plan" else project_root.parent.name
+        print(f"✓ Created layered architecture project: {project_label}")
         print(f"✓ Plan files created in: {plan_dir}")
         logger.log(
             "info",
             "init_complete",
             "Architecture plan initialized",
-            {"project": project_name, "plan_dir": str(plan_dir)},
+            {"project": str(project_root), "plan_dir": str(plan_dir)},
         )
         sys.exit(0)
     except Exception as e:

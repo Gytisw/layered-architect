@@ -6,6 +6,9 @@ open-ended answers early and force measurable inputs before L1.
 If the platform does not support interactive questions, translate these to
 concise text prompts and require specific, quantified answers.
 
+**Rule:** Keep options mutually exclusive. Avoid "All of the above" or vague
+catch-all answers for required gates.
+
 ## Core Concept (Required)
 
 ```json
@@ -19,6 +22,31 @@ concise text prompts and require specific, quantified answers.
         {"label": "API Service", "description": "Backend service with external integrations"},
         {"label": "Agent/AI System", "description": "LLM or agent-based workflows"},
         {"label": "Data Pipeline", "description": "ETL, streaming, or analytics pipeline"}
+      ]
+    }
+  ]
+}
+```
+
+## Optional Layer Gate (Required)
+
+```json
+{
+  "questions": [
+    {
+      "header": "Problem Framing",
+      "question": "Do we need L0 problem framing?",
+      "options": [
+        {"label": "Yes", "description": "Requirements unclear, scope fuzzy, or goals conflict"},
+        {"label": "No", "description": "Requirements are clear and aligned"}
+      ]
+    },
+    {
+      "header": "Operability",
+      "question": "Do we need L5 operability/readiness?",
+      "options": [
+        {"label": "Yes", "description": "Production delivery, reliability/security/cost need explicit readiness"},
+        {"label": "No", "description": "Not needed for this phase"}
       ]
     }
   ]

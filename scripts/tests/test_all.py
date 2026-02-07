@@ -41,6 +41,7 @@ import generate_adrs
 import generate_diagrams
 import check_consistency
 import validate_all
+import validate_dependencies
 import import_plan
 from check_constraints import ConstraintChecker, Constraint, Component
 
@@ -310,6 +311,20 @@ class TestInitArchitecture(unittest.TestCase):
         self.assertIsNone(content["current_layer"])
         self.assertIsNone(content["last_completed"])
 
+    def test_create_dependencies_yml(self):
+        """Test dependencies.yml file creation."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_dependencies_yml(plan_dir)
+
+        dep_file = plan_dir / "dependencies.yml"
+        self.assertTrue(dep_file.exists())
+        content = yaml.safe_load(dep_file.read_text())
+        self.assertEqual(content.get("status"), "draft")
+        self.assertIn("nodes", content)
+        self.assertIn("edges", content)
+
     def test_main_with_valid_project_name(self):
         """Test main function with valid project name."""
         project_name = os.path.join(self.temp_dir, "my_project")
@@ -330,6 +345,34 @@ class TestInitArchitecture(unittest.TestCase):
         self.assertTrue((plan_dir / "L4-implementation.md").exists())
         self.assertTrue((plan_dir / "constraints.yml").exists())
         self.assertTrue((plan_dir / "checkpoint.yml").exists())
+        self.assertTrue((plan_dir / "dependencies.yml").exists())
+
+    def test_main_with_path_flag(self):
+        """Test main function with --path to init in existing directory."""
+        project_root = Path(self.temp_dir)
+        with patch.object(sys, "argv", ["init_architecture.py", "--path", str(project_root)]):
+            with patch("sys.stdout", new=StringIO()):
+                try:
+                    init_architecture.main()
+                except SystemExit as e:
+                    self.assertEqual(e.code, 0)
+
+        plan_dir = project_root / ".plan"
+        self.assertTrue(plan_dir.exists())
+        self.assertTrue((plan_dir / "L1-meta-architecture.md").exists())
+
+    def test_main_with_here_flag(self):
+        """Test main function with --here to init in CWD."""
+        os.chdir(self.temp_dir)
+        with patch.object(sys, "argv", ["init_architecture.py", "--here"]):
+            with patch("sys.stdout", new=StringIO()):
+                try:
+                    init_architecture.main()
+                except SystemExit as e:
+                    self.assertEqual(e.code, 0)
+
+        plan_dir = Path(self.temp_dir) / ".plan"
+        self.assertTrue(plan_dir.exists())
 
     def test_main_without_project_name(self):
         """Test main function exits with error when no project name provided."""
@@ -1425,9 +1468,59 @@ class TestGenerateDiagrams(unittest.TestCase):
         diagram = plan_dir / "diagrams" / "system-flow.mmd"
         self.assertTrue(diagram.exists())
 
+ 
+# =============================================================================
+# Test Class 10: Validate Dependencies
+# =============================================================================
+
+
+class TestValidateDependencies(unittest.TestCase):
+    """Tests for validate_dependencies.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.plan_dir = Path(self.temp_dir) / ".plan"
+        self.plan_dir.mkdir()
+
+    def write_dep(self, content: str):
+        (self.plan_dir / "dependencies.yml").write_text(content)
+
+    def test_missing_dependencies_file(self):
+        warnings, errors = validate_dependencies.validate_dependencies(self.plan_dir)
+        self.assertTrue(errors)
+
+    def test_draft_status_errors(self):
+        self.write_dep(
+            "version: \"1.0.0\"\nstatus: draft\nnodes:\n  - name: a\nedges: []\n"
+        )
+        warnings, errors = validate_dependencies.validate_dependencies(self.plan_dir)
+        self.assertTrue(errors)
+
+    def test_valid_dependencies(self):
+        self.write_dep(
+            "version: \"1.0.0\"\nstatus: complete\nnodes:\n  - name: a\n  - name: b\nedges:\n  - from: a\n    to: b\nconstraints:\n  acyclic: true\n"
+        )
+        warnings, errors = validate_dependencies.validate_dependencies(self.plan_dir)
+        self.assertFalse(errors)
+
+    def test_cycle_detection(self):
+        self.write_dep(
+            "version: \"1.0.0\"\nstatus: complete\nnodes:\n  - name: a\n  - name: b\nedges:\n  - from: a\n    to: b\n  - from: b\n    to: a\nconstraints:\n  acyclic: true\n"
+        )
+        warnings, errors = validate_dependencies.validate_dependencies(self.plan_dir)
+        self.assertTrue(errors)
+
+    def test_auto_stub_creates_file(self):
+        warnings, errors = validate_dependencies.validate_dependencies(
+            self.plan_dir, auto_stub=True, no_write=False
+        )
+        self.assertTrue((self.plan_dir / "dependencies.yml").exists())
+        self.assertTrue(errors)
+
 
 # =============================================================================
-# Test Class 10: Consistency Checks
+# Test Class 11: Consistency Checks
 # =============================================================================
 
 
@@ -1866,6 +1959,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestExtractConstraints))
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateADRs))
     suite.addTests(loader.loadTestsFromTestCase(TestGenerateDiagrams))
+    suite.addTests(loader.loadTestsFromTestCase(TestValidateDependencies))
     suite.addTests(loader.loadTestsFromTestCase(TestConsistencyChecks))
     suite.addTests(loader.loadTestsFromTestCase(TestValidateAll))
     suite.addTests(loader.loadTestsFromTestCase(TestImportPlan))

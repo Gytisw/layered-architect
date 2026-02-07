@@ -12,6 +12,11 @@ L0 and L5 are optional and should only be used when their triggers apply to avoi
 
 **Use when:** requirements are unclear, scope is fuzzy, or goals conflict.
 
+**Trigger checklist (any yes → use L0):**
+- Multiple stakeholders with conflicting goals
+- Ambiguous scope or unclear success metrics
+- Critical assumptions or unknowns that could invalidate L1
+
 **L0 Template (YAML):**
 ```yaml
 layer: L0
@@ -45,6 +50,12 @@ Top risks with severity and mitigation:
 ### L5: Operability & Readiness (Optional)
 
 **Use when:** moving toward delivery or when reliability, security, or cost require explicit readiness checks.
+
+**Trigger checklist (any yes → use L5):**
+- Production launch or external users
+- Compliance/security requirements (SOC2, GDPR, HIPAA)
+- Uptime/SLOs or on-call expectations
+- Backup/DR, cost guardrails, or performance budgets required
 
 **L5 Template (YAML):**
 ```yaml
@@ -336,7 +347,8 @@ Define the internal structure of subsystems: modules, APIs, and dependencies.
 ### Definition of Done (L3)
 - Modules enumerated with responsibilities
 - API contracts include inputs, outputs, and errors
-- Dependency graph is acyclic
+- Dependency graph is acyclic and marked complete
+- `.plan/dependencies.yml` exists with `status: complete`
 - Decision log has at least 1 entry
 
 ### Required Sections
@@ -356,10 +368,12 @@ Detailed interface specifications:
 - Versioning strategy
 
 #### Dependency Graph
+- Canonical source: `.plan/dependencies.yml`
 - Internal module dependencies
 - External service dependencies
 - Library/framework dependencies
 - Version constraints
+Schema: `schemas/dependencies.schema.json`
 
 #### Decision Log (Required)
 Key decisions and rationale:

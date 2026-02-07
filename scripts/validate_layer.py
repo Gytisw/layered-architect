@@ -18,6 +18,7 @@ except ImportError:
 
 from log_utils import init_logger
 from path_utils import resolve_plan_dir
+import validate_dependencies
 
 LAYER_REQUIREMENTS = {
     "L0": {
@@ -362,6 +363,18 @@ def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
             warnings.append(f"Too many constraints ({constraint_count})")
         else:
             print(f"✓ Constraint count in recommended range ({constraint_count})")
+
+    # Dependency graph validation gate for L3/L4
+    if layer in {"L3", "L4"}:
+        dep_warnings, dep_errors = validate_dependencies.validate_dependencies(arch_dir)
+        if dep_errors:
+            print("✗ ERROR: Dependency graph validation failed:")
+            for err in dep_errors:
+                print(f"  - {err}")
+            return None
+        for warn in dep_warnings:
+            print(f"⚠ WARNING: {warn}")
+            warnings.append(warn)
 
     print()
 

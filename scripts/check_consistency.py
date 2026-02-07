@@ -128,9 +128,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    plan_dir = resolve_plan_dir(args.path) or Path(args.path).resolve()
-    if not plan_dir.exists():
-        print(f"Error: plan directory not found: {plan_dir}")
+    plan_dir = resolve_plan_dir(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print(f"Error: .plan directory not found (searched from {args.path})")
+        print("AGENT FIX:")
+        print("  cd /path/to/project && python scripts/check_consistency.py --path .plan")
+        print("  python scripts/check_consistency.py --path /path/to/project/.plan")
         return 1
 
     logger = init_logger("check_consistency")

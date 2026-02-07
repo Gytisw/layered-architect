@@ -54,6 +54,10 @@ Define modules, APIs, dependencies, and contracts.
 - Implementation Notes
 - Decision Log
 
+**Dependency Graph (Required):**
+Maintain `.plan/dependencies.yml` and mark `status: complete` before proceeding to L4.
+Use `python scripts/validate_dependencies.py --path .plan` to validate.
+
 ### L4: Implementation
 Define code structure, patterns, and file organization.
 
@@ -71,6 +75,9 @@ Use optional layers only when triggers apply to avoid bloat:
 - **L0 Problem Framing (Optional):** Use when requirements are unclear, scope is fuzzy, or goals conflict. If skipped, record a short skip reason.
 - **L5 Operability & Readiness (Optional):** Use when moving toward delivery or when reliability, security, or cost require explicit readiness checks. If skipped, record a short skip reason.
 
+**Agent Gate:** Ask explicit yes/no trigger questions before L1 and after L4.
+If you skip L0/L5, add a one-line skip reason near the top of L1/L4 or in `checkpoint.yml`.
+
 ## Guided Questioning (Agent Flow)
 
 At the start, ask the user:
@@ -86,6 +93,7 @@ Optional domain-specific prompts: `references/domain-profiles.md`.
 **Interactive requirement:** If the platform supports a Question tool, use it
 for discrete choices and do not proceed to a new layer until the user has
 provided specific, quantified answers (no vague "fast/secure/scalable").
+Avoid "All of the above" or catch-all answers in required questions.
 
 **Completion criteria:** See `references/layer-guide.md` for "definition of done"
 guidance per layer.
@@ -138,8 +146,21 @@ Mapping schema reference: `schemas/plan-map.schema.json`
 
 ## Quick Start
 
+Preferred (unified CLI):
+```bash
+python scripts/arch.py doctor
+python scripts/arch.py init --path .
+python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
+```
+
+Direct scripts:
+
 1. **Initialize planning:**
    ```bash
+   # In current repo
+   python scripts/init_architecture.py --path .
+
+   # Or create a new folder
    python scripts/init_architecture.py "my-project"
    ```
 
@@ -155,6 +176,11 @@ Mapping schema reference: `schemas/plan-map.schema.json`
    python scripts/check_constraints.py
    ```
 
+   If L1 constraints are in markdown only:
+   ```bash
+   python scripts/extract_constraints.py .plan/L1-meta-architecture.md
+   ```
+
 4. **Save progress:**
    ```bash
    python scripts/checkpoint_manager.py save
@@ -163,6 +189,19 @@ Mapping schema reference: `schemas/plan-map.schema.json`
 Agent-friendly alternative:
 ```bash
 python scripts/validate_all.py --path .plan --format json
+```
+
+Minimal agent quickstart:
+`references/agent-quickstart.md`
+
+Auto-sync constraints when registry is empty:
+```bash
+python scripts/validate_all.py --path .plan --auto-constraints
+```
+
+Auto-create dependency stub if missing:
+```bash
+python scripts/validate_all.py --path .plan --auto-deps
 ```
 
 ## Layer Isolation Protocol
@@ -182,8 +221,15 @@ Soft gates between layers provide warnings without blocking:
 - **L1→L2 Gate:** Check constraints are specific, principles are actionable
 - **L2→L3 Gate:** Check system boundaries are closed, interfaces are defined
 - **L3→L4 Gate:** Check dependencies form DAG, interfaces have signatures
+- **Dependency Graph Gate:** `.plan/dependencies.yml` must exist and have `status: complete`
 
 See [references/validation-patterns.md](references/validation-patterns.md) for detailed criteria.
+
+## Semantic Cross-Layer Validation (Subagents)
+
+After scripted validation, run sharded semantic checks using subagents to
+compare adjacent layers. Guidance and required report schema:
+`references/semantic-validation.md`.
 
 ## Constraint Registry
 
@@ -202,6 +248,11 @@ See [references/constraint-examples.md](references/constraint-examples.md) for e
 
 If constraints exist only in L1 markdown, extract them with:
 `python scripts/extract_constraints.py .plan/L1-meta-architecture.md`
+
+## Dependency Graph
+
+Create and maintain `.plan/dependencies.yml` as the canonical dependency graph.
+Validation is gated on `status: complete` and an acyclic graph.
 
 ## Resources
 

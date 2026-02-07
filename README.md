@@ -69,10 +69,28 @@ Check your tool’s docs for permission settings in plan modes.
 
 ## Quick Start (New Architecture)
 
+Preferred (unified CLI):
+
+```bash
+python scripts/arch.py doctor
+python scripts/arch.py init --path .
+python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
+```
+
+Direct scripts (legacy):
+
 1. Initialize a plan:
 ```bash
+# In current repo
+python scripts/init_architecture.py --path .
+
+# Or create a new folder
 python scripts/init_architecture.py my-project
 ```
+
+## Agent Quickstart (Minimal)
+
+See: `references/agent-quickstart.md`
 
 2. Fill and validate layers:
 ```bash
@@ -82,9 +100,19 @@ python scripts/validate_layer.py L3
 python scripts/validate_layer.py L4
 ```
 
+After L3, complete the dependency graph:
+```bash
+python scripts/validate_dependencies.py --path .plan
+```
+
 3. Check constraints:
 ```bash
 python scripts/check_constraints.py
+```
+
+Agent-friendly one-shot:
+```bash
+python scripts/validate_all.py --path .plan --format json
 ```
 
 ---
@@ -107,6 +135,8 @@ Use only when triggers apply:
 
 - **L0 Problem Framing:** unclear scope, conflicting goals  
 - **L5 Operability & Readiness:** delivery readiness, compliance, cost controls
+
+If you skip L0/L5, record a brief skip reason in L1/L4 or `checkpoint.yml`.
 
 Templates:
 - `assets/template-l0-problem-framing.md`
@@ -167,6 +197,31 @@ If you already have L1 constraints in markdown, you can extract them into
 python scripts/extract_constraints.py .plan/L1-meta-architecture.md
 ```
 
+Auto-sync during validation:
+```bash
+python scripts/validate_all.py --path .plan --auto-constraints
+```
+
+Auto-create dependency stub if missing:
+```bash
+python scripts/validate_all.py --path .plan --auto-deps
+```
+
+---
+
+## Dependency Graph (Required)
+
+Maintain `.plan/dependencies.yml` as the canonical dependency graph.
+Set `status: complete` when finished. Validation is gated on this.
+
+Validate:
+```bash
+python scripts/validate_dependencies.py --path .plan
+```
+
+Schema:
+`schemas/dependencies.schema.json`
+
 ---
 
 ## Validation & Linting
@@ -196,10 +251,25 @@ Single-command validation (agent-friendly):
 python scripts/validate_all.py --path .plan --format json
 ```
 
+Unified CLI:
+```bash
+python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
+```
+
 Read-only mode (avoid logs):
 ```bash
 LAYERED_ARCHITECT_READONLY=1 python scripts/validate_all.py --path .plan
 ```
+
+Disable any auto-writes:
+```bash
+python scripts/validate_all.py --path .plan --auto-constraints --no-write
+```
+
+## Semantic Cross-Layer Validation
+
+After scripted validation, run sharded subagent checks:
+`references/semantic-validation.md`
 
 ## ADR Generation
 

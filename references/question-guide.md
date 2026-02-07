@@ -21,6 +21,7 @@ Interactive flows and decision trees: `references/interactive-questions.md`.
 
 - Do you want **strict** validation (fail on warnings) or **soft** validation (warn only)?
 - Do you want **minimal** or **thorough** questioning?
+- Decide L0/L5 via explicit trigger questions (see `references/interactive-questions.md`).
 
 ---
 
@@ -82,6 +83,7 @@ Interactive flows and decision trees: `references/interactive-questions.md`.
 - What are the key modules and their APIs?
 - What are the dependencies?
 - What are the critical contracts?
+- Populate `.plan/dependencies.yml` and mark `status: complete`.
 
 ### Thorough
 - For each module: responsibilities, public API, config needs.
