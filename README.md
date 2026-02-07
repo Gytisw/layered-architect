@@ -31,9 +31,11 @@ flowchart TD
   A["L0 Problem Framing (Optional)"] --> B["L1 Meta-Architecture"]
   B --> C["L2 System Architecture"]
   C --> D["L3 Component Design"]
-  D --> E["L4 Implementation"]
+  D --> X["Dependency Graph (dependencies.yml)"]
+  X --> E["L4 Implementation"]
   E --> F["L5 Operability & Readiness (Optional)"]
-  E --> G["PRD (Post-Architecture)"]
+  E --> S["Semantic Cross-Layer Validation"]
+  S --> G["PRD (Post-Architecture)"]
 ```
 
 ---
@@ -44,7 +46,7 @@ flowchart TD
 - `assets/` Templates and examples
 - `references/` Guides, validation, question sets, domain profiles
 - `schemas/` JSON schemas for layers and mappings
-- `scripts/` Tooling (validation, linting, adapter)
+- `scripts/` Tooling (includes `arch.py` unified CLI)
 
 ---
 
@@ -82,7 +84,7 @@ Agent-friendly:
 python scripts/arch.py doctor --json
 ```
 
-Direct scripts (legacy):
+Direct scripts (legacy / debugging):
 
 1. Initialize a plan:
 ```bash
@@ -226,7 +228,7 @@ Set `status: complete` when finished. Validation is gated on this.
 
 Validate:
 ```bash
-python scripts/validate_dependencies.py --path .plan
+python scripts/arch.py deps --path .plan
 ```
 
 Schema:
@@ -302,7 +304,7 @@ See `references/agent-usage-guide.md` for agent-specific workflow guidance.
 Lint and dependency checks:
 ```bash
 python scripts/lint_architecture.py .
-python scripts/dependency_graph.py --check --path .plan
+python scripts/arch.py deps --path .plan
 ```
 
 ---
@@ -381,4 +383,4 @@ Issues and PRs are welcome. Keep changes small, agent-friendly, and aligned to s
 
 ## License
 
-Add a `LICENSE` file before publishing if you want to allow reuse.
+MIT License. See `LICENSE`.
