@@ -4,6 +4,7 @@ Unified CLI for layered-architect.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -121,11 +122,32 @@ def find_docs(root: Path) -> bool:
 
 def cmd_doctor(args) -> int:
     plan_dir = resolve_plan_dir(args.path)
+    result = {"status": "unknown", "next_step": "", "reason": ""}
     if not plan_dir or not plan_dir.exists():
         root = Path(args.path or ".").resolve()
         if find_docs(root):
+            result.update(
+                {
+                    "status": "docs_no_plan",
+                    "next_step": "python scripts/arch.py map --suggest --apply",
+                    "reason": "Documentation exists but .plan is missing",
+                }
+            )
+            if args.json:
+                print(json.dumps(result, indent=2))
+                return 0
             print("No .plan directory found, but documentation exists.")
-            print("Next step: python scripts/arch.py map --suggest")
+            print("Next step: python scripts/arch.py map --suggest --apply")
+            return 0
+        result.update(
+            {
+                "status": "fresh_start",
+                "next_step": "python scripts/arch.py init --path .",
+                "reason": "No .plan or docs detected",
+            }
+        )
+        if args.json:
+            print(json.dumps(result, indent=2))
             return 0
         print("No .plan directory and no documentation found.")
         print("Next step: python scripts/arch.py init --path .")
@@ -133,6 +155,16 @@ def cmd_doctor(args) -> int:
 
     dep_file = plan_dir / "dependencies.yml"
     if not dep_file.exists():
+        result.update(
+            {
+                "status": "deps_missing",
+                "next_step": "python scripts/arch.py deps --auto-stub --path .plan",
+                "reason": "dependencies.yml missing",
+            }
+        )
+        if args.json:
+            print(json.dumps(result, indent=2))
+            return 0
         print("dependencies.yml is missing.")
         print("Next step: python scripts/arch.py deps --auto-stub --path .plan")
         return 0
@@ -142,10 +174,30 @@ def cmd_doctor(args) -> int:
         data = yaml.safe_load(dep_file.read_text()) or {}
         status = str(data.get("status", "draft")).strip().lower()
         if status != "complete":
+            result.update(
+                {
+                    "status": "deps_incomplete",
+                    "next_step": "Finalize dependencies.yml and set status: complete",
+                    "reason": "dependencies.yml status is not complete",
+                }
+            )
+            if args.json:
+                print(json.dumps(result, indent=2))
+                return 0
             print("dependencies.yml is not complete.")
             print("Next step: finalize dependencies.yml and set status: complete")
             return 0
     except Exception:
+        result.update(
+            {
+                "status": "deps_invalid",
+                "next_step": "Fix dependencies.yml format",
+                "reason": "dependencies.yml could not be parsed",
+            }
+        )
+        if args.json:
+            print(json.dumps(result, indent=2))
+            return 0
         print("dependencies.yml could not be parsed.")
         print("Next step: fix dependencies.yml format")
         return 0
@@ -157,12 +209,32 @@ def cmd_doctor(args) -> int:
         "L4-implementation.md",
     ]:
         if not (plan_dir / layer_file).exists():
+            result.update(
+                {
+                    "status": "layer_missing",
+                    "next_step": f"Complete {layer_file}",
+                    "reason": f"{layer_file} missing in .plan",
+                }
+            )
+            if args.json:
+                print(json.dumps(result, indent=2))
+                return 0
             print(f"Missing {layer_file}.")
             print("Next step: complete the missing layer file")
             return 0
 
+    result.update(
+        {
+            "status": "ready",
+            "next_step": "python scripts/arch.py validate --path .plan --auto-constraints --auto-deps",
+            "reason": "All core artifacts present",
+        }
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
     print("All core artifacts present.")
-    print("Next step: python scripts/arch.py validate --path .plan --auto-constraints")
+    print("Next step: python scripts/arch.py validate --path .plan --auto-constraints --auto-deps")
     return 0
 
 
@@ -212,6 +284,7 @@ def main() -> int:
 
     p_doctor = sub.add_parser("doctor", help="Suggest next action")
     p_doctor.add_argument("--path", help="Path to project or .plan")
+    p_doctor.add_argument("--json", action="store_true", help="Emit JSON output")
     p_doctor.set_defaults(func=cmd_doctor)
 
     args = parser.parse_args()

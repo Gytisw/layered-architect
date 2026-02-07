@@ -113,7 +113,12 @@ If missing deps are reported, install:
 ## Guided Start (Fresh vs Existing Docs)
 
 If the project status is unclear, run:
-- `python scripts/start_arch.py`
+- `python scripts/arch.py doctor`
+
+Legacy: `python scripts/start_arch.py`
+
+For machine-readable output (agents):
+`python scripts/arch.py doctor --json`
 
 ## PRD Stage (Post-Architecture)
 
@@ -130,6 +135,10 @@ If L0 or L5 triggers apply, use the templates in:
 
 To adapt existing documentation into L0–L5 without changing the original structure:
 
+Preferred (unified CLI):
+`python scripts/arch.py map --suggest --apply`
+
+Direct scripts (legacy / debugging):
 1. Generate a mapping: `python scripts/map_architecture.py --suggest`
 2. Review/edit `plan.map.yml`
 3. Generate summaries: `python scripts/map_architecture.py --apply`
@@ -153,6 +162,9 @@ python scripts/arch.py init --path .
 python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
 ```
 
+Agent-friendly:
+`python scripts/arch.py doctor --json`
+
 Direct scripts:
 
 1. **Initialize planning:**
@@ -165,13 +177,13 @@ Direct scripts:
    ```
 
 2. **Work through layers sequentially:**
-   - Edit `L1-meta-architecture.md`
-   - Run `python scripts/validate_layer.py L1`
-   - Edit `L2-system-architecture.md`
-   - Run `python scripts/validate_layer.py L2`
-   - Continue through L3 and L4
+   - Edit `L1-meta-architecture.md` → `L4-implementation.md`
+   - Validate in one shot:
+     ```bash
+     python scripts/validate_all.py --path .plan --format json
+     ```
 
-3. **Validate constraints:**
+3. **Validate constraints (optional deep check):**
    ```bash
    python scripts/check_constraints.py
    ```
@@ -181,14 +193,14 @@ Direct scripts:
    python scripts/extract_constraints.py .plan/L1-meta-architecture.md
    ```
 
-4. **Save progress:**
+4. **Save progress (optional):**
    ```bash
    python scripts/checkpoint_manager.py save
    ```
 
-Agent-friendly alternative:
+Debug a single layer:
 ```bash
-python scripts/validate_all.py --path .plan --format json
+python scripts/validate_layer.py --layer L2 --path .plan
 ```
 
 Minimal agent quickstart:
@@ -196,12 +208,12 @@ Minimal agent quickstart:
 
 Auto-sync constraints when registry is empty:
 ```bash
-python scripts/validate_all.py --path .plan --auto-constraints
+python scripts/arch.py validate --path .plan --auto-constraints
 ```
 
 Auto-create dependency stub if missing:
 ```bash
-python scripts/validate_all.py --path .plan --auto-deps
+python scripts/arch.py validate --path .plan --auto-deps
 ```
 
 ## Layer Isolation Protocol

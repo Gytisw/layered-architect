@@ -3,7 +3,7 @@
 Use the unified CLI to minimize context overhead:
 
 1. Detect next step:
-   `python scripts/arch.py doctor`
+   `python scripts/arch.py doctor --json`
 
 2. Initialize if needed:
    `python scripts/arch.py init --path .`

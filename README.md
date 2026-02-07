@@ -77,6 +77,11 @@ python scripts/arch.py init --path .
 python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
 ```
 
+Agent-friendly:
+```bash
+python scripts/arch.py doctor --json
+```
+
 Direct scripts (legacy):
 
 1. Initialize a plan:
@@ -88,44 +93,42 @@ python scripts/init_architecture.py --path .
 python scripts/init_architecture.py my-project
 ```
 
-## Agent Quickstart (Minimal)
-
-See: `references/agent-quickstart.md`
-
-2. Fill and validate layers:
+2. Fill layers (L1→L4), then validate in one shot:
 ```bash
-python scripts/validate_layer.py L1
-python scripts/validate_layer.py L2
-python scripts/validate_layer.py L3
-python scripts/validate_layer.py L4
+python scripts/validate_all.py --path .plan --format json
 ```
 
-After L3, complete the dependency graph:
+3. Dependency graph gate:
 ```bash
 python scripts/validate_dependencies.py --path .plan
 ```
 
-3. Check constraints:
+4. Optional deep checks:
 ```bash
 python scripts/check_constraints.py
+python scripts/validate_layer.py --layer L2 --path .plan
 ```
 
-Agent-friendly one-shot:
-```bash
-python scripts/validate_all.py --path .plan --format json
-```
+## Agent Quickstart (Minimal)
+
+See: `references/agent-quickstart.md`
 
 ---
 
 ## Guided Start (Fresh vs Existing Docs)
 
 ```bash
-python scripts/start_arch.py
+python scripts/arch.py doctor
 ```
 
 - If `.plan/` exists → continue with validation  
 - If docs exist but no `.plan/` → use mapping adapter  
 - If no docs → initialize from scratch
+
+Legacy:
+```bash
+python scripts/start_arch.py
+```
 
 ---
 
@@ -153,6 +156,13 @@ Generate a PRD aligned to the finalized architecture:
 ---
 
 ## Universal Adapter (Existing Docs → L0–L5)
+
+Preferred (unified CLI):
+```bash
+python scripts/arch.py map --suggest --apply
+```
+
+Direct scripts:
 
 1. Suggest mapping:
 ```bash
@@ -183,7 +193,7 @@ Unmapped files are reported for manual review.
 If you already drafted architecture content elsewhere:
 
 ```bash
-python scripts/import_plan.py --source /path/to/draft.md --target .plan
+python scripts/arch.py import --source /path/to/draft.md --target .plan
 ```
 
 ---
@@ -199,12 +209,12 @@ python scripts/extract_constraints.py .plan/L1-meta-architecture.md
 
 Auto-sync during validation:
 ```bash
-python scripts/validate_all.py --path .plan --auto-constraints
+python scripts/arch.py validate --path .plan --auto-constraints
 ```
 
 Auto-create dependency stub if missing:
 ```bash
-python scripts/validate_all.py --path .plan --auto-deps
+python scripts/arch.py validate --path .plan --auto-deps
 ```
 
 ---
@@ -226,24 +236,9 @@ Schema:
 
 ## Validation & Linting
 
-Strict by default:
+Unified CLI:
 ```bash
-python scripts/validate_layer.py L2
-```
-
-Validate all layers (path-aware):
-```bash
-python scripts/validate_layer.py --all --path .plan
-```
-
-Soft mode:
-```bash
-python scripts/validate_layer.py --soft L2
-```
-
-Path-only (defaults to all layers):
-```bash
-python scripts/validate_layer.py .plan
+python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
 ```
 
 Single-command validation (agent-friendly):
@@ -251,19 +246,24 @@ Single-command validation (agent-friendly):
 python scripts/validate_all.py --path .plan --format json
 ```
 
-Unified CLI:
+Debug single layer:
 ```bash
-python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
+python scripts/validate_layer.py --layer L2 --path .plan
+```
+
+Soft mode (debug):
+```bash
+python scripts/validate_layer.py --soft L2
 ```
 
 Read-only mode (avoid logs):
 ```bash
-LAYERED_ARCHITECT_READONLY=1 python scripts/validate_all.py --path .plan
+LAYERED_ARCHITECT_READONLY=1 python scripts/arch.py validate --path .plan
 ```
 
 Disable any auto-writes:
 ```bash
-python scripts/validate_all.py --path .plan --auto-constraints --no-write
+python scripts/arch.py validate --path .plan --auto-constraints --no-write
 ```
 
 ## Semantic Cross-Layer Validation
