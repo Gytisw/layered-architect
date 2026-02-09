@@ -19,11 +19,50 @@ from lint_architecture import ArchitectureLinter
 import check_consistency
 import extract_constraints
 import validate_dependencies
+import validate_semantic_report
 
 try:
     import yaml  # type: ignore
 except ImportError:
     yaml = None
+
+
+GATES_REQUIRED_FIELDS = [
+    "mode",
+    "question_depth",
+    "l0_required",
+    "l5_required",
+    "research_required",
+    "research_approved",
+    "semantic_required",
+    "semantic_completed",
+    "dependencies_complete",
+    "constraints_registry_present",
+    "last_step",
+]
+
+
+def load_gates(plan_dir: Path) -> tuple[Dict, List[str]]:
+    errors: List[str] = []
+    if yaml is None:
+        errors.append("PyYAML missing; cannot parse gates.yml")
+        return {}, errors
+    gates_path = plan_dir / "gates.yml"
+    if not gates_path.exists():
+        errors.append("gates.yml missing in .plan/")
+        return {}, errors
+    try:
+        data = yaml.safe_load(gates_path.read_text()) or {}
+    except Exception as exc:
+        errors.append(f"Failed to parse gates.yml: {exc}")
+        return {}, errors
+    if not isinstance(data, dict):
+        errors.append("gates.yml is not a valid mapping")
+        return {}, errors
+    missing = [k for k in GATES_REQUIRED_FIELDS if k not in data]
+    if missing:
+        errors.append("gates.yml missing required keys: " + ", ".join(missing))
+    return data, errors
 
 
 def main() -> int:
@@ -58,13 +97,22 @@ def main() -> int:
     if not plan_dir or not plan_dir.exists():
         print(f"Error: .plan directory not found (searched from {args.path or 'cwd'})")
         print("AGENT FIX:")
-        print("  cd /path/to/project && python scripts/validate_all.py --path .plan")
-        print("  python scripts/validate_all.py --path /path/to/project/.plan")
+        print("  cd /path/to/project && python scripts/arch.py validate --path .plan")
+        print("  python scripts/arch.py validate --path /path/to/project/.plan")
         return 1
 
     results: Dict[str, Dict] = {}
     warnings_total = 0
     errors_total = 0
+
+    gates, gate_errors = load_gates(plan_dir)
+    if gate_errors:
+        status = "ERROR" if args.strict else "WARN"
+        if args.strict:
+            errors_total += 1
+        else:
+            warnings_total += 1
+        results["gates"] = {"status": status, "errors": gate_errors}
 
     layers = ["L0", "L1", "L2", "L3", "L4", "L5"]
     for layer in layers:
@@ -217,55 +265,72 @@ def main() -> int:
                     return True
         return False
 
-    # Semantic validation report
-    semantic_file = find_report("semantic-validation")
-    semantic_missing = semantic_file is None
-    missing_shards: list[str] = []
-    if semantic_file and semantic_file.suffix == ".md":
-        content = semantic_file.read_text(encoding="utf-8").lower()
-        required_shards = ["shard a", "shard b", "shard c", "shard d", "shard e"]
-        if (plan_dir / "L0-problem-framing.md").exists():
-            required_shards.append("shard f")
-        if (plan_dir / "L5-operability-readiness.md").exists():
-            required_shards.append("shard g")
-        for shard in required_shards:
-            if shard not in content:
-                missing_shards.append(shard.upper())
+    gates_research_required = bool(gates.get("research_required", False))
+    research_required = (
+        gates_research_required or has_external_deps_section() or dependencies_has_external_nodes()
+    )
+    research_approved = bool(gates.get("research_approved", False))
+    semantic_required = bool(gates.get("semantic_required", True)) if gates else True
+    semantic_completed = bool(gates.get("semantic_completed", False))
 
-    if semantic_missing:
-        status = "ERROR" if args.strict else "WARN"
-        msg = "Semantic validation report missing (.plan/semantic-validation.md or .json)"
-        if args.strict:
-            errors_total += 1
-        else:
-            warnings_total += 1
-        results["semantic_validation"] = {"status": status, "message": msg}
-    else:
-        if missing_shards:
-            warnings_total += 1
+    # Semantic validation report
+    if semantic_required:
+        semantic_warnings, semantic_errors = validate_semantic_report.validate_report(plan_dir)
+        if semantic_errors:
+            errors_total += len(semantic_errors)
+        if semantic_warnings:
+            warnings_total += len(semantic_warnings)
+        semantic_status = "OK"
+        if semantic_errors:
+            semantic_status = "ERROR"
+        elif semantic_warnings:
+            semantic_status = "WARN"
         results["semantic_validation"] = {
-            "status": "WARN" if missing_shards else "OK",
-            "file": semantic_file.name,
-            "missing_shards": missing_shards,
+            "status": semantic_status,
+            "warnings": semantic_warnings,
+            "errors": semantic_errors,
         }
+
+        if not semantic_completed:
+            msg = "semantic_completed is false in .plan/gates.yml"
+            if args.strict:
+                errors_total += 1
+                results["semantic_validation"]["status"] = "ERROR"
+            else:
+                warnings_total += 1
+                if results["semantic_validation"]["status"] == "OK":
+                    results["semantic_validation"]["status"] = "WARN"
+            results["semantic_validation"]["gate"] = msg
+    else:
+        results["semantic_validation"] = {"status": "SKIP", "required": False}
 
     # Research log gate
-    research_required = has_external_deps_section() or dependencies_has_external_nodes()
     research_file = find_report("research")
-    if research_required and research_file is None:
-        status = "ERROR" if args.strict else "WARN"
-        msg = "Research log required for external dependencies (.plan/research.md or .json)"
+    research_status = "OK"
+    research_messages: List[str] = []
+    if research_required and not research_approved:
+        research_messages.append("research_approved is false in .plan/gates.yml")
         if args.strict:
             errors_total += 1
+            research_status = "ERROR"
         else:
             warnings_total += 1
-        results["research"] = {"status": status, "required": True, "message": msg}
-    else:
-        results["research"] = {
-            "status": "OK",
-            "required": research_required,
-            "file": research_file.name if research_file else None,
-        }
+            research_status = "WARN"
+    if research_required and research_file is None:
+        research_messages.append("Research log required (.plan/research.md or .json)")
+        if args.strict:
+            errors_total += 1
+            research_status = "ERROR"
+        else:
+            warnings_total += 1
+            research_status = "WARN"
+    results["research"] = {
+        "status": research_status,
+        "required": research_required,
+        "approved": research_approved,
+        "file": research_file.name if research_file else None,
+        "messages": research_messages,
+    }
 
     ready = errors_total == 0 and (warnings_total == 0 or not args.strict)
     summary = {
@@ -276,6 +341,7 @@ def main() -> int:
         "errors": errors_total,
         "ready_for_execution": ready,
         "layers": {k: v for k, v in results.items() if k in layers},
+        "gates": results.get("gates", {}),
         "constraints": results["constraints"],
         "dependencies": results["dependencies"],
         "consistency": results["consistency"],
@@ -294,6 +360,10 @@ def main() -> int:
         for layer in layers:
             entry = summary["layers"].get(layer, {})
             print(f"  {layer}: {entry.get('status')} (warnings: {entry.get('warnings')})")
+        if summary.get("gates"):
+            print(f"- Gates: {summary['gates'].get('status')}")
+            for err in summary["gates"].get("errors", []):
+                print(f"  {err}")
         print(f"- Constraints: {summary['constraints']['status']}")
         print(f"- Dependencies: {summary['dependencies']['status']}")
         print(f"- Consistency: {summary['consistency']['status']}")
@@ -301,14 +371,17 @@ def main() -> int:
         if summary.get("semantic_validation"):
             print(f"- Semantic Validation: {summary['semantic_validation'].get('status')}")
             if summary["semantic_validation"].get("status") in {"WARN", "ERROR"}:
-                msg = summary["semantic_validation"].get("message", "")
-                if msg:
-                    print(f"  {msg}")
+                for err in summary["semantic_validation"].get("errors", []):
+                    print(f"  {err}")
+                for warn in summary["semantic_validation"].get("warnings", []):
+                    print(f"  {warn}")
+                gate_msg = summary["semantic_validation"].get("gate")
+                if gate_msg:
+                    print(f"  {gate_msg}")
         if summary.get("research"):
             print(f"- Research: {summary['research'].get('status')}")
             if summary["research"].get("status") in {"WARN", "ERROR"}:
-                msg = summary["research"].get("message", "")
-                if msg:
+                for msg in summary["research"].get("messages", []):
                     print(f"  {msg}")
         if args.strict and warnings_total > 0:
             print("✗ STRICT MODE: WARNINGS ARE BLOCKING. FIX BEFORE PROCEEDING.")

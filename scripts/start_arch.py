@@ -33,7 +33,7 @@ def main() -> None:
             print("Detected existing .plan directory with layer files.")
             print("Suggested next steps:")
             print("- Continue with the next layer in .plan/")
-            print("- Validate the current layer: python scripts/validate_layer.py <L#>")
+            print("- Validate the current layer: python scripts/arch.py validate --layer L# --path .plan")
             logger.log(
                 "info",
                 "plan_detected",
@@ -46,16 +46,16 @@ def main() -> None:
     if md_count > 0:
         print("No .plan directory found, but existing documentation is present.")
         print("Suggested next steps:")
-        print("- Generate a mapping: python scripts/map_architecture.py --suggest")
+        print("- Generate a mapping: python scripts/arch.py map --suggest")
         print("- Review/edit plan.map.yml")
-        print("- Generate .plan summaries: python scripts/map_architecture.py --apply")
+        print("- Generate .plan summaries: python scripts/arch.py map --apply")
         logger.log("info", "docs_detected", "Docs detected without .plan", {"md_files": md_count})
         return
 
     print("No .plan directory and no documentation detected.")
     print("Suggested next steps:")
-    print("- Initialize in current repo: python scripts/init_architecture.py --path .")
-    print("- Or create a new folder: python scripts/init_architecture.py <project_name>")
+    print("- Initialize in current repo: python scripts/arch.py init --path .")
+    print("- Or create a new folder: python scripts/arch.py init <project_name>")
     logger.log("info", "fresh_start", "No .plan or docs detected")
 
 

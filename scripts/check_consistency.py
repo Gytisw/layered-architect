@@ -132,8 +132,8 @@ def main() -> int:
     if not plan_dir or not plan_dir.exists():
         print(f"Error: .plan directory not found (searched from {args.path})")
         print("AGENT FIX:")
-        print("  cd /path/to/project && python scripts/check_consistency.py --path .plan")
-        print("  python scripts/check_consistency.py --path /path/to/project/.plan")
+        print("  cd /path/to/project && python scripts/arch.py consistency --path .plan")
+        print("  python scripts/arch.py consistency --path /path/to/project/.plan")
         return 1
 
     logger = init_logger("check_consistency")

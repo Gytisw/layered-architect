@@ -344,7 +344,7 @@ class ConstraintChecker:
             lines.append(f"✗ ERROR: {error}")
             if "Constraints file not found" in error:
                 lines.append("  AGENT FIX: Ensure .plan/constraints.yml exists or run:")
-                lines.append("    python scripts/extract_constraints.py .plan/L1-meta-architecture.md")
+                lines.append("    python scripts/arch.py constraints extract --path .plan/L1-meta-architecture.md")
 
         # Summary
         if not self.warnings and not self.errors:

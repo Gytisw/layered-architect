@@ -43,6 +43,8 @@ import check_consistency
 import validate_all
 import validate_dependencies
 import import_plan
+import arch
+import validate_semantic_report
 from check_constraints import ConstraintChecker, Constraint, Component
 
 
@@ -1518,6 +1520,20 @@ class TestValidateDependencies(unittest.TestCase):
         self.assertTrue((self.plan_dir / "dependencies.yml").exists())
         self.assertTrue(errors)
 
+    def test_legacy_modules_schema_errors(self):
+        self.write_dep(
+            "version: \"1.0.0\"\nstatus: complete\nmodules:\n  - a\nedges: []\n"
+        )
+        warnings, errors = validate_dependencies.validate_dependencies(self.plan_dir)
+        self.assertTrue(errors)
+
+    def test_missing_edges_schema_errors(self):
+        self.write_dep(
+            "version: \"1.0.0\"\nstatus: complete\nnodes:\n  - name: a\n"
+        )
+        warnings, errors = validate_dependencies.validate_dependencies(self.plan_dir)
+        self.assertTrue(errors)
+
 
 # =============================================================================
 # Test Class 11: Consistency Checks
@@ -1551,6 +1567,166 @@ class TestConsistencyChecks(unittest.TestCase):
 class TestValidateAll(unittest.TestCase):
     """Tests for validate_all.py script."""
 
+    def write_minimal_plan(
+        self,
+        plan_dir: Path,
+        *,
+        include_research: bool,
+        include_semantic: bool,
+        gates_overrides: dict | None = None,
+    ) -> None:
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        (plan_dir / "L1-meta-architecture.md").write_text(
+            """# L1
+
+## Vision
+Test vision
+
+## Constraints
+- CON-001: Test constraint one
+- CON-002: Test constraint two
+- CON-003: Test constraint three
+
+## Principles
+1. Principle one
+2. Principle two
+
+## Success Criteria
+- Success one
+- Success two
+
+## Decision Log
+1. **Decision**: Choice
+   - **Rationale**: Because
+   - **Impact**: It impacts
+
+## Risk Register
+1. **Risk**: Risky
+   - **Severity**: Low
+   - **Mitigation**: Mitigate
+   - **Owner**: Team
+"""
+        )
+        (plan_dir / "L2-system-architecture.md").write_text(
+            """# L2
+
+## Overview
+Overview
+
+## Subsystems
+- Core
+
+## Boundaries
+Boundaries
+
+## Data Flow
+Core -> Core
+
+## Interfaces
+- API
+
+## External Dependencies
+- Redis
+
+## Migration Strategy
+None
+
+## Tradeoff Matrix
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| A | a | b | choose |
+
+## Decision Log
+1. **Decision**: Use Redis
+   - **Rationale**: Cache
+   - **Impact**: Adds dependency
+"""
+        )
+        (plan_dir / "L3-component-design.md").write_text(
+            """# L3
+
+## Modules
+- ModuleA (CON-002)
+
+## API Contracts
+- ContractA
+
+## Dependencies
+- ModuleA depends on ModuleB
+
+## Decision Log
+1. **Decision**: Module design
+   - **Rationale**: R
+   - **Impact**: I
+"""
+        )
+        (plan_dir / "L4-implementation.md").write_text(
+            """# L4
+
+## File Structure
+```
+src/
+  module_a.py
+```
+
+## Code Patterns
+- PatternA
+
+## Implementation Details
+- Detail (CON-003)
+
+## Validation Commands
+```bash
+echo ok
+```
+
+## Implementation Order
+1. [ ] Task
+
+## Testing Strategy
+- Unit tests: basic
+- Integration tests: basic
+
+## Build & Deployment
+Deploy
+
+## Decision Log
+1. **Decision**: Build
+   - **Rationale**: R
+   - **Impact**: I
+"""
+        )
+        (plan_dir / "constraints.yml").write_text(
+            "version: \"1.0.0\"\nconstraints:\n  - id: CON-001\n    layer: L1\n    text: \"Test constraint one\"\n  - id: CON-002\n    layer: L1\n    text: \"Test constraint two\"\n  - id: CON-003\n    layer: L1\n    text: \"Test constraint three\"\n"
+        )
+        (plan_dir / "dependencies.yml").write_text(
+            "version: \"1.0.0\"\nstatus: complete\nnodes:\n  - name: Core\nedges:\n  - from: Core\n    to: Core\nconstraints:\n  acyclic: true\n"
+        )
+
+        gates = {
+            "mode": "strict",
+            "question_depth": "minimal",
+            "l0_required": False,
+            "l5_required": False,
+            "research_required": False,
+            "research_approved": include_research,
+            "semantic_required": True,
+            "semantic_completed": include_semantic,
+            "dependencies_complete": True,
+            "constraints_registry_present": True,
+            "last_step": "init",
+        }
+        if gates_overrides:
+            gates.update(gates_overrides)
+        (plan_dir / "gates.yml").write_text(yaml.safe_dump(gates, sort_keys=False))
+
+        if include_research:
+            (plan_dir / "research.md").write_text("# Research\n\n- source: test\n")
+        if include_semantic:
+            (plan_dir / "semantic-validation.md").write_text(
+                "# Semantic Validation Report\n\n## Shard A\n- status: PASS\n\n## Shard B\n- status: PASS\n\n## Shard C\n- status: PASS\n\n## Shard D\n- status: PASS\n\n## Shard E\n- status: PASS\n"
+            )
+
     def test_validate_all_json_output(self):
         temp_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, temp_dir)
@@ -1568,9 +1744,86 @@ class TestValidateAll(unittest.TestCase):
                 output = mock_stdout.getvalue()
         self.assertIn("\"overall\"", output)
 
+    def test_validate_all_strict_fails_without_semantic_report(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        self.write_minimal_plan(
+            plan_dir,
+            include_research=True,
+            include_semantic=False,
+            gates_overrides={"semantic_completed": True, "research_approved": True},
+        )
+
+        with patch.object(sys, "argv", ["validate_all.py", "--path", str(plan_dir), "--strict"]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                exit_code = validate_all.main()
+                output = mock_stdout.getvalue()
+        self.assertNotEqual(exit_code, 0)
+        self.assertIn("Semantic Validation", output)
+
+    def test_validate_all_strict_fails_without_research_log(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        self.write_minimal_plan(
+            plan_dir,
+            include_research=False,
+            include_semantic=True,
+            gates_overrides={"semantic_completed": True, "research_approved": True},
+        )
+
+        with patch.object(sys, "argv", ["validate_all.py", "--path", str(plan_dir), "--strict"]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                exit_code = validate_all.main()
+                output = mock_stdout.getvalue()
+        self.assertNotEqual(exit_code, 0)
+        self.assertIn("Research", output)
+
+    def test_validate_all_gates_schema_missing_keys(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        self.write_minimal_plan(plan_dir, include_research=True, include_semantic=True)
+        (plan_dir / "gates.yml").write_text("mode: strict\n")
+
+        with patch.object(sys, "argv", ["validate_all.py", "--path", str(plan_dir), "--strict"]):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                exit_code = validate_all.main()
+                output = mock_stdout.getvalue()
+        self.assertNotEqual(exit_code, 0)
+        self.assertIn("gates.yml", output)
+
 
 # =============================================================================
-# Test Class 12: Import Plan
+# Test Class 12: Semantic Report Validation
+# =============================================================================
+
+
+class TestValidateSemanticReport(unittest.TestCase):
+    """Tests for validate_semantic_report.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.plan_dir = Path(self.temp_dir) / ".plan"
+        self.plan_dir.mkdir()
+
+    def test_missing_report_errors(self):
+        warnings, errors = validate_semantic_report.validate_report(self.plan_dir)
+        self.assertTrue(errors)
+
+    def test_missing_shards_warns(self):
+        (self.plan_dir / "semantic-validation.md").write_text(
+            "# Semantic Validation Report\n\n## Shard A\n- status: PASS\n"
+        )
+        warnings, errors = validate_semantic_report.validate_report(self.plan_dir)
+        self.assertFalse(errors)
+        self.assertTrue(warnings)
+
+
+# =============================================================================
+# Test Class 13: Import Plan
 # =============================================================================
 
 
@@ -1849,6 +2102,47 @@ class TestMapArchitecture(unittest.TestCase):
 
 
 # =============================================================================
+# Test Class 14: Arch CLI Wrappers
+# =============================================================================
+
+
+class TestArchCLI(unittest.TestCase):
+    """Tests for arch.py wrapper commands."""
+
+    def test_constraints_extract_wrapper(self):
+        with patch.object(arch, "run_main", return_value=0) as mock_run:
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "arch.py",
+                    "constraints",
+                    "extract",
+                    "--path",
+                    "L1-meta-architecture.md",
+                    "--out",
+                    "constraints.yml",
+                ],
+            ):
+                arch.main()
+        argv = mock_run.call_args[0][1]
+        self.assertEqual(argv[0], "extract_constraints.py")
+        self.assertIn("L1-meta-architecture.md", argv)
+
+    def test_diagrams_wrapper(self):
+        with patch.object(arch, "run_main", return_value=0) as mock_run:
+            with patch.object(
+                sys,
+                "argv",
+                ["arch.py", "diagrams", "--path", ".plan", "--format", "mermaid"],
+            ):
+                arch.main()
+        argv = mock_run.call_args[0][1]
+        self.assertEqual(argv[0], "generate_diagrams.py")
+        self.assertIn("--format", argv)
+
+
+# =============================================================================
 # Test Class 9: Guided Start
 # =============================================================================
 
@@ -1962,8 +2256,10 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestValidateDependencies))
     suite.addTests(loader.loadTestsFromTestCase(TestConsistencyChecks))
     suite.addTests(loader.loadTestsFromTestCase(TestValidateAll))
+    suite.addTests(loader.loadTestsFromTestCase(TestValidateSemanticReport))
     suite.addTests(loader.loadTestsFromTestCase(TestImportPlan))
     suite.addTests(loader.loadTestsFromTestCase(TestLintArchitecture))
+    suite.addTests(loader.loadTestsFromTestCase(TestArchCLI))
 
     # Run tests with verbosity
     runner = unittest.TextTestRunner(verbosity=2)

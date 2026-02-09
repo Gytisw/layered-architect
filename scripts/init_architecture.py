@@ -212,6 +212,22 @@ validation_status: {}
     (plan_dir / "checkpoint.yml").write_text(content)
 
 
+def create_gates_yml(plan_dir: Path):
+    content = """mode: strict
+question_depth: minimal
+l0_required: false
+l5_required: false
+research_required: false
+research_approved: false
+semantic_required: true
+semantic_completed: false
+dependencies_complete: false
+constraints_registry_present: false
+last_step: init
+"""
+    (plan_dir / "gates.yml").write_text(content)
+
+
 def create_dependencies_yml(plan_dir: Path):
     content = """version: "1.0.0"
 status: draft
@@ -285,6 +301,7 @@ def main():
         create_l4_implementation(plan_dir)
         create_constraints_yml(plan_dir)
         create_checkpoint_yml(plan_dir)
+        create_gates_yml(plan_dir)
         create_dependencies_yml(plan_dir)
         create_support_dirs(plan_dir)
 

@@ -12,7 +12,7 @@ python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
 ```
 
 1. Check deps:
-   `python scripts/check_deps.py`
+   `python scripts/arch.py check-deps`
 2. Detect next step:
    `python scripts/arch.py doctor --json`
 3. If existing docs:
@@ -42,23 +42,10 @@ Read-only:
 - **Files already exist**
   - Fix: use edit/update instead of write
 
-## Script Purpose (Agent View)
+## Unified CLI (Only)
 
-| Script | When to Use | Required |
-|---|---|---|
-| `check_deps.py` | first run | ✅ |
-| `arch.py` | unified CLI | ✅ |
-| `init_architecture.py` | legacy init | optional |
-| `map_architecture.py` | legacy mapping | optional |
-| `import_plan.py` | legacy import | optional |
-| `validate_all.py` | legacy validate | optional |
-| `validate_layer.py` | legacy single-layer debug | optional |
-| `check_constraints.py` | constraints deep check | optional |
-| `extract_constraints.py` | L1 markdown → YAML | optional |
-| `validate_dependencies.py` | dependency gate | optional |
-| `generate_adrs.py` | create ADRs | optional |
-| `generate_diagrams.py` | mermaid/plantuml | optional |
-| `checkpoint_manager.py` | manual checkpoints | optional |
+All actions must be performed through `python scripts/arch.py ...`.
+Do not run legacy scripts directly.
 
 ## Notes
 

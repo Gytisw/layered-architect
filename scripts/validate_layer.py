@@ -282,8 +282,8 @@ def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
         print(f"  in: {arch_dir}")
         print()
         print("AGENT FIX:")
-        print(f"  python scripts/validate_layer.py --layer {layer} --path /path/to/.plan")
-        print(f"  cd /path/to/project && python scripts/validate_layer.py --layer {layer}")
+        print(f"  python scripts/arch.py validate --layer {layer} --path /path/to/.plan")
+        print(f"  cd /path/to/project && python scripts/arch.py validate --layer {layer}")
         return None
 
     print(f"Validating {layer}...")
@@ -465,11 +465,11 @@ def main():
         print("      L3-component-design.md")
         print("      L4-implementation.md")
         print("    scripts/")
-        print("      validate_layer.py")
+        print("      arch.py")
         print()
         print("AGENT FIX:")
-        print("  cd /path/to/project && python scripts/validate_layer.py --all")
-        print("  python scripts/validate_layer.py --all --path /path/to/.plan")
+        print("  cd /path/to/project && python scripts/arch.py validate --path .plan")
+        print("  python scripts/arch.py validate --path /path/to/.plan")
         logger.log("error", "arch_dir_missing", "Architecture directory not found", {"arch_dir": str(arch_dir)})
         sys.exit(2)
 

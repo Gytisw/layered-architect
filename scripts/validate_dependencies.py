@@ -164,6 +164,17 @@ def validate_dependencies(
         errors.append(f"Failed to parse dependencies.yml: {exc}")
         return warnings, errors
 
+    if "modules" in data:
+        errors.append(
+            "Legacy 'modules' schema detected. Use nodes/edges per schemas/dependencies.schema.json"
+        )
+
+    if "nodes" not in data or "edges" not in data:
+        errors.append(
+            "dependencies.yml missing required 'nodes' or 'edges' (see schemas/dependencies.schema.json)"
+        )
+        return warnings, errors
+
     status = str(data.get("status", "draft")).strip().lower()
     if status != "complete":
         errors.append("dependencies.yml status is not 'complete'")
@@ -228,8 +239,8 @@ def main() -> int:
     if not plan_dir or not plan_dir.exists():
         print(f"Error: .plan directory not found (searched from {args.path})")
         print("AGENT FIX:")
-        print("  cd /path/to/project && python scripts/validate_dependencies.py --path .plan")
-        print("  python scripts/validate_dependencies.py --path /path/to/project/.plan")
+        print("  cd /path/to/project && python scripts/arch.py deps --path .plan")
+        print("  python scripts/arch.py deps --path /path/to/project/.plan")
         return 1
 
     logger = init_logger("validate_dependencies")

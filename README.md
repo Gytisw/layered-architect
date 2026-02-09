@@ -84,31 +84,11 @@ Agent-friendly:
 python scripts/arch.py doctor --json
 ```
 
-Direct scripts (legacy / debugging):
-
-1. Initialize a plan:
+Unified CLI only:
 ```bash
-# In current repo
-python scripts/init_architecture.py --path .
-
-# Or create a new folder
-python scripts/init_architecture.py my-project
-```
-
-2. Fill layers (L1→L4), then validate in one shot:
-```bash
-python scripts/validate_all.py --path .plan --format json
-```
-
-3. Dependency graph gate:
-```bash
-python scripts/validate_dependencies.py --path .plan
-```
-
-4. Optional deep checks:
-```bash
-python scripts/check_constraints.py
-python scripts/arch.py validate --layer L2 --path .plan
+python scripts/arch.py init --path .
+python scripts/arch.py validate --path .plan
+python scripts/arch.py deps --path .plan
 ```
 
 ## Agent Quickstart (Minimal)
@@ -126,11 +106,6 @@ python scripts/arch.py doctor
 - If `.plan/` exists → continue with validation  
 - If docs exist but no `.plan/` → use mapping adapter  
 - If no docs → initialize from scratch
-
-Legacy:
-```bash
-python scripts/start_arch.py
-```
 
 ---
 
@@ -164,23 +139,19 @@ Preferred (unified CLI):
 python scripts/arch.py map --suggest --apply
 ```
 
-Direct scripts:
-
-1. Suggest mapping:
+Unified mapping:
 ```bash
-python scripts/map_architecture.py --suggest
+python scripts/arch.py map --suggest
 ```
 
-2. Edit `plan.map.yml`
-
-3. Generate summaries:
+Then edit `plan.map.yml`, and apply:
 ```bash
-python scripts/map_architecture.py --apply
+python scripts/arch.py map --apply
 ```
 
 Optional citations:
 ```bash
-python scripts/map_architecture.py --apply --cite
+python scripts/arch.py map --apply --cite
 ```
 
 If `.plan/constraints.yml` is missing, the adapter generates a stub registry
@@ -206,7 +177,7 @@ If you already have L1 constraints in markdown, you can extract them into
 `.plan/constraints.yml`:
 
 ```bash
-python scripts/extract_constraints.py .plan/L1-meta-architecture.md
+python scripts/arch.py constraints extract --path .plan/L1-meta-architecture.md --out .plan/constraints.yml
 ```
 
 Auto-sync during validation:
@@ -244,11 +215,6 @@ python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
 ```
 
 Strict is default: warnings block progression. Use soft mode only with explicit user approval.
-
-Single-command validation (agent-friendly, legacy):
-```bash
-python scripts/validate_all.py --path .plan --format json
-```
 
 Debug single layer (unified CLI):
 ```bash
@@ -302,7 +268,7 @@ assumptions and risks.
 Generate Architecture Decision Records from layer decision logs:
 
 ```bash
-python scripts/generate_adrs.py --path .plan
+python scripts/arch.py adrs --path .plan
 ```
 
 ## Diagram Generation
@@ -310,7 +276,7 @@ python scripts/generate_adrs.py --path .plan
 Generate Mermaid/PlantUML diagrams from L2 data flow:
 
 ```bash
-python scripts/generate_diagrams.py --path .plan --format both
+python scripts/arch.py diagrams --path .plan --format both
 ```
 
 ## Consistency Checks
@@ -318,7 +284,7 @@ python scripts/generate_diagrams.py --path .plan --format both
 Cross-layer semantic checks (constraints, interfaces, modules):
 
 ```bash
-python scripts/check_consistency.py --path .plan
+python scripts/arch.py consistency --path .plan
 ```
 
 ## Agent Guide
@@ -327,7 +293,7 @@ See `references/agent-usage-guide.md` for agent-specific workflow guidance.
 
 Lint and dependency checks:
 ```bash
-python scripts/lint_architecture.py .
+python scripts/arch.py lint --path .
 python scripts/arch.py deps --path .plan
 ```
 
@@ -354,7 +320,7 @@ pip install pyyaml
 
 Preflight (optional):
 ```bash
-python scripts/check_deps.py
+python scripts/arch.py check-deps
 ```
 
 Install with:

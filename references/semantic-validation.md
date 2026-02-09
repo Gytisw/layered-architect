@@ -103,3 +103,4 @@ The orchestrator should:
 Run semantic validation **after** scripted validation.
 If any **blocker** findings exist, do not proceed to implementation.
 If any required shard is missing, validation is incomplete.
+After completion, set `semantic_completed: true` in `.plan/gates.yml`.

@@ -166,8 +166,8 @@ def main() -> int:
     if not plan_dir or not plan_dir.exists():
         print(f"Error: .plan directory not found (searched from {args.path})")
         print("AGENT FIX:")
-        print("  cd /path/to/project && python scripts/generate_adrs.py --path .plan")
-        print("  python scripts/generate_adrs.py --path /path/to/project/.plan")
+        print("  cd /path/to/project && python scripts/arch.py adrs --path .plan")
+        print("  python scripts/arch.py adrs --path /path/to/project/.plan")
         return 1
 
     out_dir = plan_dir / args.out

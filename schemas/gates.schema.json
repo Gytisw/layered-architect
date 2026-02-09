@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Layered Architect Gates",
+  "type": "object",
+  "required": [
+    "mode",
+    "question_depth",
+    "l0_required",
+    "l5_required",
+    "research_required",
+    "research_approved",
+    "semantic_required",
+    "semantic_completed",
+    "dependencies_complete",
+    "constraints_registry_present",
+    "last_step"
+  ],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["strict", "soft"]
+    },
+    "question_depth": {
+      "type": "string",
+      "enum": ["minimal", "thorough"]
+    },
+    "l0_required": {"type": "boolean"},
+    "l5_required": {"type": "boolean"},
+    "research_required": {"type": "boolean"},
+    "research_approved": {"type": "boolean"},
+    "semantic_required": {"type": "boolean"},
+    "semantic_completed": {"type": "boolean"},
+    "dependencies_complete": {"type": "boolean"},
+    "constraints_registry_present": {"type": "boolean"},
+    "last_step": {"type": "string"}
+  },
+  "additionalProperties": true
+}

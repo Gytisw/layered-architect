@@ -108,8 +108,8 @@ def main() -> None:
     if not plan_dir:
         print(f"Error: .plan directory not found (searched from {args.path})")
         print("AGENT FIX:")
-        print("  cd /path/to/project && python scripts/generate_diagrams.py --path .plan")
-        print("  python scripts/generate_diagrams.py --path /path/to/project/.plan")
+        print("  cd /path/to/project && python scripts/arch.py diagrams --path .plan")
+        print("  python scripts/arch.py diagrams --path /path/to/project/.plan")
         sys.exit(1)
     l2_file = plan_dir / "L2-system-architecture.md"
     if not l2_file.exists():
