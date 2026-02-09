@@ -4,6 +4,9 @@ Use subagents to validate cross-layer coherence without running scripts.
 Each subagent reads only two layers (or constraints + one layer) to reduce
 context overload.
 
+**Output location (required):** save the aggregated report to
+`.plan/semantic-validation.md` (or `.plan/semantic-validation.json`).
+
 ## Required Shards
 
 Run **all** required shards. If any shard is missing, semantic validation is incomplete.
@@ -32,6 +35,33 @@ Each shard must return findings using this schema:
   evidence: "Quoted snippet or section reference"
   expected: "What should be true per constraints/layer"
   suggested_fix: "Concrete edit or action"
+```
+
+## Minimal Report Template
+
+```
+# Semantic Validation Report
+
+## Shard A (L1↔L2)
+- status: PASS | WARN | FAIL
+
+## Shard B (L2↔L3)
+- status: PASS | WARN | FAIL
+
+## Shard C (L3↔L4)
+- status: PASS | WARN | FAIL
+
+## Shard D (constraints.yml↔L2/L3/L4)
+- status: PASS | WARN | FAIL
+
+## Shard E (dependencies.yml↔L3/L4)
+- status: PASS | WARN | FAIL
+
+## Shard F (L0↔L1) [if L0 exists]
+- status: PASS | WARN | FAIL
+
+## Shard G (L4↔L5) [if L5 exists]
+- status: PASS | WARN | FAIL
 ```
 
 ## Evidence Checklist (Per Shard)

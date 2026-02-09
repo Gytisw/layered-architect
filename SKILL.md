@@ -251,13 +251,15 @@ See [references/validation-patterns.md](references/validation-patterns.md) for d
 subagents to compare adjacent layers. Do not declare completion until all
 required shards report. Guidance and required report schema:
 `references/semantic-validation.md`.
+Save the aggregated report to `.plan/semantic-validation.md` (or `.json`).
 
 ## Research Gate (Time-Sensitive Decisions)
 
 If architecture decisions depend on time-sensitive or rapidly changing info
 (libraries, cloud services, compliance requirements, pricing, security best
 practices), delegate research to subagents or use web search before finalizing
-L2/L3. Record sources or explicitly document assumptions if research is not possible.
+L2/L3. Record sources in `.plan/research.md` (or `.plan/research.json`), or
+explicitly document assumptions if research is not possible.
 
 ## Constraint Registry
 

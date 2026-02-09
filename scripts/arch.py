@@ -60,7 +60,7 @@ def cmd_validate(args) -> int:
         argv.extend(["--path", args.path])
     if args.format:
         argv.extend(["--format", args.format])
-    if args.strict:
+    if args.strict or not args.soft:
         argv.append("--strict")
     if args.auto_constraints:
         argv.append("--auto-constraints")
@@ -252,6 +252,7 @@ def main() -> int:
     p_validate.add_argument("--path", help="Path to .plan or project")
     p_validate.add_argument("--format", choices=["text", "json"])
     p_validate.add_argument("--strict", action="store_true")
+    p_validate.add_argument("--soft", action="store_true", help="Soft gate for full validation")
     p_validate.add_argument("--auto-constraints", action="store_true")
     p_validate.add_argument("--auto-deps", action="store_true")
     p_validate.add_argument("--no-write", action="store_true")

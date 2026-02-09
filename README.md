@@ -260,6 +260,11 @@ Soft mode (debug):
 python scripts/arch.py validate --layer L2 --path .plan --soft
 ```
 
+Soft mode (full validation):
+```bash
+python scripts/arch.py validate --path .plan --soft
+```
+
 Read-only mode (avoid logs):
 ```bash
 LAYERED_ARCHITECT_READONLY=1 python scripts/arch.py validate --path .plan
@@ -288,7 +293,8 @@ Do not declare completion until all required shards report.
 
 If architecture decisions depend on time-sensitive info (libraries, cloud services,
 compliance, pricing, security guidance), delegate research to subagents or perform
-web search before finalizing L2/L3. If research is not possible, document explicit
+web search before finalizing L2/L3. Record sources in `.plan/research.md`
+(or `.plan/research.json`). If research is not possible, document explicit
 assumptions and risks.
 
 ## ADR Generation

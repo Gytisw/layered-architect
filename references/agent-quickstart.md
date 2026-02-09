@@ -17,7 +17,9 @@ Use the unified CLI to minimize context overhead:
 
 5. Run semantic cross-layer validation:
    See `references/semantic-validation.md`
+   Save report to `.plan/semantic-validation.md`
 
 Notes:
 - Strict mode is default: warnings block progression unless user approves soft mode.
 - Semantic validation is required before declaring completion.
+- Record research sources in `.plan/research.md` when external dependencies exist.

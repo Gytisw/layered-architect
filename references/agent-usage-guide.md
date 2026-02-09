@@ -66,7 +66,8 @@ Read-only:
 - **Strict mode:** warnings block progression unless the user explicitly approves soft mode.
 - **Semantic validation is required** after scripted validation (use sharded subagents).
 - **Research gate:** for time-sensitive decisions (libraries, cloud services, compliance, pricing),
-  delegate research or use web search before finalizing L2/L3. Document sources or explicit assumptions.
+  delegate research or use web search before finalizing L2/L3. Record sources in
+  `.plan/research.md` (or `.plan/research.json`) or document explicit assumptions.
 - Use Question tool if available; otherwise ask text prompts with numeric choices.
 - If you cannot execute commands in your environment, delegate the script runs to
   an execution-capable agent and continue after results are returned.

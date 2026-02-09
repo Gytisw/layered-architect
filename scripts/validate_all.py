@@ -6,6 +6,7 @@ Single-command validation wrapper for agents.
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List
@@ -18,6 +19,11 @@ from lint_architecture import ArchitectureLinter
 import check_consistency
 import extract_constraints
 import validate_dependencies
+
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
 
 
 def main() -> int:
@@ -166,6 +172,101 @@ def main() -> int:
     if lint_exit != 0:
         errors_total += 1
 
+    # Semantic validation + research gates
+    def find_report(basename: str) -> Path | None:
+        for ext in (".md", ".json"):
+            candidate = plan_dir / f"{basename}{ext}"
+            if candidate.exists():
+                return candidate
+        return None
+
+    def normalize_header(text: str) -> str:
+        cleaned = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+        return " ".join(cleaned.split())
+
+    def has_external_deps_section() -> bool:
+        l2_file = plan_dir / "L2-system-architecture.md"
+        if not l2_file.exists():
+            return False
+        content = l2_file.read_text(encoding="utf-8")
+        header_pattern = re.compile(r"^#{2,4}\s+(.+)$")
+        targets = {
+            normalize_header("External Dependencies"),
+            normalize_header("Dependencies"),
+            normalize_header("Third-Party Dependencies"),
+        }
+        for line in content.splitlines():
+            match = header_pattern.match(line.strip())
+            if match and normalize_header(match.group(1)) in targets:
+                return True
+        return False
+
+    def dependencies_has_external_nodes() -> bool:
+        dep_file = plan_dir / "dependencies.yml"
+        if not dep_file.exists() or yaml is None:
+            return False
+        try:
+            data = yaml.safe_load(dep_file.read_text()) or {}
+        except Exception:
+            return False
+        nodes = data.get("nodes", [])
+        for node in nodes:
+            if isinstance(node, dict):
+                node_type = str(node.get("type", "")).strip().lower()
+                if node_type in {"external", "infrastructure", "vendor", "third_party", "third-party"}:
+                    return True
+        return False
+
+    # Semantic validation report
+    semantic_file = find_report("semantic-validation")
+    semantic_missing = semantic_file is None
+    missing_shards: list[str] = []
+    if semantic_file and semantic_file.suffix == ".md":
+        content = semantic_file.read_text(encoding="utf-8").lower()
+        required_shards = ["shard a", "shard b", "shard c", "shard d", "shard e"]
+        if (plan_dir / "L0-problem-framing.md").exists():
+            required_shards.append("shard f")
+        if (plan_dir / "L5-operability-readiness.md").exists():
+            required_shards.append("shard g")
+        for shard in required_shards:
+            if shard not in content:
+                missing_shards.append(shard.upper())
+
+    if semantic_missing:
+        status = "ERROR" if args.strict else "WARN"
+        msg = "Semantic validation report missing (.plan/semantic-validation.md or .json)"
+        if args.strict:
+            errors_total += 1
+        else:
+            warnings_total += 1
+        results["semantic_validation"] = {"status": status, "message": msg}
+    else:
+        if missing_shards:
+            warnings_total += 1
+        results["semantic_validation"] = {
+            "status": "WARN" if missing_shards else "OK",
+            "file": semantic_file.name,
+            "missing_shards": missing_shards,
+        }
+
+    # Research log gate
+    research_required = has_external_deps_section() or dependencies_has_external_nodes()
+    research_file = find_report("research")
+    if research_required and research_file is None:
+        status = "ERROR" if args.strict else "WARN"
+        msg = "Research log required for external dependencies (.plan/research.md or .json)"
+        if args.strict:
+            errors_total += 1
+        else:
+            warnings_total += 1
+        results["research"] = {"status": status, "required": True, "message": msg}
+    else:
+        results["research"] = {
+            "status": "OK",
+            "required": research_required,
+            "file": research_file.name if research_file else None,
+        }
+
     ready = errors_total == 0 and (warnings_total == 0 or not args.strict)
     summary = {
         "overall": "PASS" if ready else "FAIL",
@@ -179,6 +280,8 @@ def main() -> int:
         "dependencies": results["dependencies"],
         "consistency": results["consistency"],
         "lint": results["lint"],
+        "semantic_validation": results.get("semantic_validation", {}),
+        "research": results.get("research", {}),
     }
 
     if args.format == "json":
@@ -195,6 +298,18 @@ def main() -> int:
         print(f"- Dependencies: {summary['dependencies']['status']}")
         print(f"- Consistency: {summary['consistency']['status']}")
         print(f"- Lint: {summary['lint']['status']}")
+        if summary.get("semantic_validation"):
+            print(f"- Semantic Validation: {summary['semantic_validation'].get('status')}")
+            if summary["semantic_validation"].get("status") in {"WARN", "ERROR"}:
+                msg = summary["semantic_validation"].get("message", "")
+                if msg:
+                    print(f"  {msg}")
+        if summary.get("research"):
+            print(f"- Research: {summary['research'].get('status')}")
+            if summary["research"].get("status") in {"WARN", "ERROR"}:
+                msg = summary["research"].get("message", "")
+                if msg:
+                    print(f"  {msg}")
         if args.strict and warnings_total > 0:
             print("✗ STRICT MODE: WARNINGS ARE BLOCKING. FIX BEFORE PROCEEDING.")
             print("FAIL: Validation produced warnings under strict mode.")
