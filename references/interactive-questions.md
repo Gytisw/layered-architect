@@ -3,6 +3,14 @@
 Use these with the platform Question tool (if supported). They are designed to eliminate
 open-ended answers early and force measurable inputs before L1.
 
+## Platform Limits (Important)
+
+- **Claude Code:** Each AskUserQuestion call supports **1–4 questions** with **2–4 options** each.
+- **OpenCode / others:** Limits may differ; if unknown, assume 2–4 options and split as needed.
+
+**If you need more options:** split into multiple questions or add an
+"Other: specify" option and follow up with a free‑text prompt.
+
 If the platform does not support interactive questions, translate these to
 concise text prompts and require specific, quantified answers.
 

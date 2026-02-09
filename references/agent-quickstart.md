@@ -17,3 +17,7 @@ Use the unified CLI to minimize context overhead:
 
 5. Run semantic cross-layer validation:
    See `references/semantic-validation.md`
+
+Notes:
+- Strict mode is default: warnings block progression unless user approves soft mode.
+- Semantic validation is required before declaring completion.

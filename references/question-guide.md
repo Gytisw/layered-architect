@@ -53,7 +53,7 @@ Interactive flows and decision trees: `references/interactive-questions.md`.
 
 ### Thorough
 - What is the vision and impact (1–2 sentences)?
-- List 5–7 constraints with measurable thresholds.
+- List 5–20 constraints with measurable thresholds.
 - List 3–5 principles and what decisions they guide.
 - Define success criteria for latency, scale, reliability, and cost.
 - What trade-offs are explicitly accepted?

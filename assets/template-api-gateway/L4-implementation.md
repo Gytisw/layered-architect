@@ -846,7 +846,7 @@ jobs:
 
 ```bash
 # Example validation commands
-python scripts/validate_layer.py --layer L4 --path .plan
+python scripts/arch.py validate --layer L4 --path .plan
 ```
 
 ---

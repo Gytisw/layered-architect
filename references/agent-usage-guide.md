@@ -25,7 +25,7 @@ python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
    `python scripts/arch.py validate --path .plan --auto-constraints --auto-deps`
 7. Dependency graph gate (finalize):
    `python scripts/arch.py deps --path .plan`
-8. Semantic cross-layer validation (subagents):
+8. Semantic cross-layer validation (subagents, required gate):
    `references/semantic-validation.md`
 
 Read-only:
@@ -52,7 +52,7 @@ Read-only:
 | `map_architecture.py` | legacy mapping | optional |
 | `import_plan.py` | legacy import | optional |
 | `validate_all.py` | legacy validate | optional |
-| `validate_layer.py` | diagnose one layer | optional |
+| `validate_layer.py` | legacy single-layer debug | optional |
 | `check_constraints.py` | constraints deep check | optional |
 | `extract_constraints.py` | L1 markdown → YAML | optional |
 | `validate_dependencies.py` | dependency gate | optional |
@@ -63,6 +63,10 @@ Read-only:
 ## Notes
 
 - L0 and L5 are optional. Missing files should not block validation.
+- **Strict mode:** warnings block progression unless the user explicitly approves soft mode.
+- **Semantic validation is required** after scripted validation (use sharded subagents).
+- **Research gate:** for time-sensitive decisions (libraries, cloud services, compliance, pricing),
+  delegate research or use web search before finalizing L2/L3. Document sources or explicit assumptions.
 - Use Question tool if available; otherwise ask text prompts with numeric choices.
 - If you cannot execute commands in your environment, delegate the script runs to
   an execution-capable agent and continue after results are returned.

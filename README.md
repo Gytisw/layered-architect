@@ -108,7 +108,7 @@ python scripts/validate_dependencies.py --path .plan
 4. Optional deep checks:
 ```bash
 python scripts/check_constraints.py
-python scripts/validate_layer.py --layer L2 --path .plan
+python scripts/arch.py validate --layer L2 --path .plan
 ```
 
 ## Agent Quickstart (Minimal)
@@ -243,19 +243,21 @@ Unified CLI:
 python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
 ```
 
-Single-command validation (agent-friendly):
+Strict is default: warnings block progression. Use soft mode only with explicit user approval.
+
+Single-command validation (agent-friendly, legacy):
 ```bash
 python scripts/validate_all.py --path .plan --format json
 ```
 
-Debug single layer:
+Debug single layer (unified CLI):
 ```bash
-python scripts/validate_layer.py --layer L2 --path .plan
+python scripts/arch.py validate --layer L2 --path .plan
 ```
 
 Soft mode (debug):
 ```bash
-python scripts/validate_layer.py --soft L2
+python scripts/arch.py validate --layer L2 --path .plan --soft
 ```
 
 Read-only mode (avoid logs):
@@ -270,8 +272,24 @@ python scripts/arch.py validate --path .plan --auto-constraints --no-write
 
 ## Semantic Cross-Layer Validation
 
-After scripted validation, run sharded subagent checks:
+**Required gate.** After scripted validation, run sharded subagent checks:
 `references/semantic-validation.md`
+
+Required shards include:
+- L1↔L2, L2↔L3, L3↔L4
+- constraints.yml↔L2/L3/L4
+- dependencies.yml↔L3/L4
+- L0↔L1 if L0 exists
+- L4↔L5 if L5 exists
+
+Do not declare completion until all required shards report.
+
+## Research Gate (Time-Sensitive Decisions)
+
+If architecture decisions depend on time-sensitive info (libraries, cloud services,
+compliance, pricing, security guidance), delegate research to subagents or perform
+web search before finalizing L2/L3. If research is not possible, document explicit
+assumptions and risks.
 
 ## ADR Generation
 

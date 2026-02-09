@@ -451,7 +451,7 @@ alternative: "Graceful degradation during cost spikes"
 
 ### Too Many Constraints
 
-❌ **Anti-Pattern:** Listing 15+ constraints without prioritization
+❌ **Anti-Pattern:** Listing 25+ constraints without prioritization
 
 **Problem:** Teams cannot focus. Constraints will inevitably conflict.
 
@@ -462,7 +462,7 @@ tier_1_critical:  # Max 3-5
   - "PCI DSS compliance"
   - "Sub-200ms response time"
   
-tier_2_important:  # Max 5-7
+tier_2_important:  # Max 5-10
   - "SOC 2 Type II compliance"
   - "Horizontal scaling to 50 nodes"
   

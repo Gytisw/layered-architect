@@ -4,15 +4,21 @@ Use subagents to validate cross-layer coherence without running scripts.
 Each subagent reads only two layers (or constraints + one layer) to reduce
 context overload.
 
-## Recommended Shards
+## Required Shards
+
+Run **all** required shards. If any shard is missing, semantic validation is incomplete.
 
 - **Shard A:** L1 ↔ L2 (constraints → system choices)
 - **Shard B:** L2 ↔ L3 (interfaces, subsystems → modules)
 - **Shard C:** L3 ↔ L4 (modules → files/implementation details)
 - **Shard D:** constraints.yml ↔ L2/L3/L4 (traceability)
 - **Shard E:** dependencies.yml ↔ L3/L4 (graph ↔ module/file alignment)
-- **Shard F (Optional):** L0 ↔ L1 (only if L0 exists)
-- **Shard G (Optional):** L4 ↔ L5 (only if L5 exists)
+- **Shard F (Required if L0 exists):** L0 ↔ L1
+- **Shard G (Required if L5 exists):** L4 ↔ L5
+
+**Subagent guidance:** Prefer one subagent per shard (6–7 total). If the platform
+cannot run parallel subagents, run them sequentially but keep each shard scoped
+to two layers max to avoid context overload.
 
 ## Output Schema (Required)
 
@@ -60,8 +66,10 @@ The orchestrator should:
 - Deduplicate overlapping findings across shards.
 - Escalate severity if multiple shards report the same violation.
 - Produce a single "Semantic Validation Summary" list.
+ - Confirm every required shard is present (A–E, plus F/G if applicable).
 
 ## Gate
 
 Run semantic validation **after** scripted validation.
 If any **blocker** findings exist, do not proceed to implementation.
+If any required shard is missing, validation is incomplete.

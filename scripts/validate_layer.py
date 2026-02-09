@@ -48,7 +48,7 @@ LAYER_REQUIREMENTS = {
             "Risk Register",
         ],
         "min_constraints": 3,
-        "max_constraints": 7,
+        "max_constraints": 20,
     },
     "L2": {
         "file": "L2-system-architecture.md",

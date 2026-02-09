@@ -119,7 +119,7 @@ Define the vision, constraints, principles, and success criteria that guide all 
 
 ### Definition of Done (L1)
 - Vision is 1–2 sentences and names primary users
-- 3–7 measurable constraints with thresholds
+- 3–20 measurable constraints with thresholds
 - 3–5 actionable principles
 - Success criteria expressed as metrics
 - Decision log and risk register populated with at least 1 item each
@@ -131,7 +131,7 @@ Define the vision, constraints, principles, and success criteria that guide all 
 - Who are the users?
 - What is the desired impact?
 
-#### Constraints (5-7 max)
+#### Constraints (5-20 max)
 Hard limits that shape the architecture:
 1. **Budget**: Maximum cost per month/year
 2. **Timeline**: Delivery deadlines
@@ -171,7 +171,7 @@ Top risks with severity and mitigation:
    - **Owner**: [Role/Team]
 
 ### Limits
-- Maximum 7 constraints
+- Maximum 20 constraints (group into tiers if >12)
 - Maximum 5 principles
 - All success criteria must be measurable
 

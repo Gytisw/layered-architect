@@ -2,6 +2,9 @@
 
 Criteria for validating transitions between architecture layers.
 
+**Mode rule:** Strict is default and blocks progression on warnings. Soft mode is
+only allowed with explicit user approval.
+
 ---
 
 ## Optional Layer Triggers
@@ -88,11 +91,11 @@ Validation gates for transitioning from Vision (L1) to System Definition (L2):
 - Circular references between objectives indicate unclear thinking
 - Dependencies must flow from core to derived goals
 
-### 1.5 Constraint Count ≤ 7
-- Limit architectural constraints to at most 7 items
+### 1.5 Constraint Count ≤ 20
+- Limit architectural constraints to at most 20 items
+- If you exceed ~12, group into tiers (critical/important/nice-to-have)
 - Excessive constraints indicate unfocused scope
 - Each constraint must be essential to the vision
-- Fewer, stronger constraints beat many weak ones
 
 ---
 

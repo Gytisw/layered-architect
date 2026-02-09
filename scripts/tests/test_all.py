@@ -807,14 +807,14 @@ class TestCheckConstraints(unittest.TestCase):
         self.assertIn("Circular dependency", checker.warnings[0])
 
     def test_check_constraint_count_warning(self):
-        """Test constraint count warning when >7."""
+        """Test constraint count warning when >20."""
         checker = ConstraintChecker(self.project_root)
-        checker.layer_constraint_counts["L1"] = 10
+        checker.layer_constraint_counts["L1"] = 22
 
         checker.check_constraint_count()
 
         self.assertEqual(len(checker.warnings), 1)
-        self.assertIn("10 constraints", checker.warnings[0])
+        self.assertIn("22 constraints", checker.warnings[0])
 
     def test_check_contradictions(self):
         """Test detection of constraint contradictions."""

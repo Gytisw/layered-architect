@@ -6,7 +6,7 @@ Checks for constraint conflicts across all layers:
 - Duplicate component/module names across layers
 - Constraints mentioned in text but not in registry
 - Circular references (A depends on B, B depends on A)
-- Constraint count per layer (>7 warnings)
+- Constraint count per layer (>20 warnings)
 - Constraint contradictions (e.g., "fast" vs "simple")
 """
 
@@ -268,10 +268,10 @@ class ConstraintChecker:
                             )
 
     def check_constraint_count(self) -> None:
-        """Check constraint count per layer (>7 warnings)."""
+        """Check constraint count per layer (>20 warnings)."""
         for layer, count in self.layer_constraint_counts.items():
-            if count > 7:
-                self.warnings.append(f"Layer {layer} has {count} constraints (>7)")
+            if count > 20:
+                self.warnings.append(f"Layer {layer} has {count} constraints (>20)")
 
     def check_contradictions(self) -> None:
         """Detect constraint contradictions (e.g., 'fast' vs 'simple')."""

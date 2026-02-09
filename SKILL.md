@@ -25,7 +25,7 @@ Define vision, constraints, principles, and success criteria.
 
 **Content:**
 - Vision and Goals (1-2 sentences)
-- Constraints (5-7 maximum, specific and testable)
+- Constraints (5-20 maximum, specific and testable)
 - Principles (3-5 maximum, actionable)
 - Success Criteria (measurable targets)
 - Decision Log (key decisions + rationale)
@@ -87,6 +87,8 @@ At the start, ask the user:
 Question sets by layer live in: `references/question-guide.md`.
 
 Default behavior: validation is **strict** unless the user opts into soft mode.
+**Strict = warnings block progression.**
+**Soft = warnings allowed only with explicit user approval.**
 
 Optional domain-specific prompts: `references/domain-profiles.md`.
 
@@ -94,6 +96,9 @@ Optional domain-specific prompts: `references/domain-profiles.md`.
 for discrete choices and do not proceed to a new layer until the user has
 provided specific, quantified answers (no vague "fast/secure/scalable").
 Avoid "All of the above" or catch-all answers in required questions.
+**Question tool limits:** Some platforms limit option count (e.g., Claude Code
+supports 1–4 questions per call with 2–4 options each). If limits apply, split
+questions into multiple calls and offer an "Other: specify" follow-up.
 
 **Completion criteria:** See `references/layer-guide.md` for "definition of done"
 guidance per layer.
@@ -198,9 +203,9 @@ Direct scripts:
    python scripts/checkpoint_manager.py save
    ```
 
-Debug a single layer:
+Debug a single layer (unified CLI):
 ```bash
-python scripts/validate_layer.py --layer L2 --path .plan
+python scripts/arch.py validate --layer L2 --path .plan
 ```
 
 Minimal agent quickstart:
@@ -228,7 +233,10 @@ This prevents context exhaustion and maintains coherence.
 
 ## Validation Gates
 
-Soft gates between layers provide warnings without blocking:
+Gates between layers produce warnings. Behavior depends on mode:
+
+- **Strict (default):** warnings block progression until resolved.
+- **Soft (opt-in):** warnings may be accepted **only with explicit user approval**.
 
 - **L1→L2 Gate:** Check constraints are specific, principles are actionable
 - **L2→L3 Gate:** Check system boundaries are closed, interfaces are defined
@@ -239,9 +247,17 @@ See [references/validation-patterns.md](references/validation-patterns.md) for d
 
 ## Semantic Cross-Layer Validation (Subagents)
 
-After scripted validation, run sharded semantic checks using subagents to
-compare adjacent layers. Guidance and required report schema:
+**Required Gate.** After scripted validation, run sharded semantic checks using
+subagents to compare adjacent layers. Do not declare completion until all
+required shards report. Guidance and required report schema:
 `references/semantic-validation.md`.
+
+## Research Gate (Time-Sensitive Decisions)
+
+If architecture decisions depend on time-sensitive or rapidly changing info
+(libraries, cloud services, compliance requirements, pricing, security best
+practices), delegate research to subagents or use web search before finalizing
+L2/L3. Record sources or explicitly document assumptions if research is not possible.
 
 ## Constraint Registry
 
@@ -280,7 +296,7 @@ This skill is designed as a **Universal Package** that works across multiple age
 
 ## Best Practices
 
-1. **Limit constraints** to 5-7 per layer
+1. **Limit constraints** to 5-20 per layer (group into tiers if >12)
 2. **Make constraints specific** - "API latency < 200ms" not "API should be fast"
 3. **Checkpoint after each layer** - Never lose progress
 4. **Validate constraints** - Run check_constraints.py regularly
