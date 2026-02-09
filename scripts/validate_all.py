@@ -169,6 +169,8 @@ def main() -> int:
     ready = errors_total == 0 and (warnings_total == 0 or not args.strict)
     summary = {
         "overall": "PASS" if ready else "FAIL",
+        "mode": "strict" if args.strict else "soft",
+        "blocking_warnings": bool(args.strict and warnings_total > 0),
         "warnings": warnings_total,
         "errors": errors_total,
         "ready_for_execution": ready,
@@ -193,6 +195,13 @@ def main() -> int:
         print(f"- Dependencies: {summary['dependencies']['status']}")
         print(f"- Consistency: {summary['consistency']['status']}")
         print(f"- Lint: {summary['lint']['status']}")
+        if args.strict and warnings_total > 0:
+            print("✗ STRICT MODE: WARNINGS ARE BLOCKING. FIX BEFORE PROCEEDING.")
+            print("FAIL: Validation produced warnings under strict mode.")
+        elif args.strict:
+            print("PASS: Validation clean under strict mode.")
+        elif warnings_total > 0:
+            print("SOFT MODE: Warnings present. Proceed only with explicit user approval.")
 
     logger.log("info", "validate_all_complete", "Validation complete", summary)
     if not ready:

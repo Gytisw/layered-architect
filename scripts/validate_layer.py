@@ -502,7 +502,13 @@ def main():
         {"layers": layers, "warnings": len(all_warnings)},
     )
     if strict and all_warnings:
+        print("✗ STRICT MODE: WARNINGS ARE BLOCKING. FIX BEFORE PROCEEDING.")
+        print("FAIL: Validation produced warnings under strict mode.")
         sys.exit(1)
+    if strict:
+        print("PASS: Validation clean under strict mode.")
+    elif all_warnings:
+        print("SOFT MODE: Warnings present. Proceed only with explicit user approval.")
     sys.exit(0)
 
 
