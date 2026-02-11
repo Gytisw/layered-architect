@@ -1,9 +1,34 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python caches / build artifacts
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# Local runtime outputs
 .plan/
+plan.map.yml
 *.log
 *.jsonl
 *.tmp
 *.bak
+*.sqlite
+*.db
