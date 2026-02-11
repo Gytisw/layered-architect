@@ -89,27 +89,30 @@ def extract_l3_modules(plan_dir: Path) -> Set[str]:
     content = l3_file.read_text(encoding="utf-8")
     modules: Set[str] = set()
 
-    # Collect bullets under "Modules" section if present
+    # Collect bullets and subheadings under "Modules" section only.
     in_modules = False
-    header_pattern = re.compile(r"^#{2,4}\s+(.+)$")
+    header_pattern = re.compile(r"^(#{2,4})\s+(.+)$")
     for line in content.splitlines():
         match = header_pattern.match(line.strip())
         if match:
-            title = match.group(1).strip().lower()
-            in_modules = title in {"modules", "module specifications", "components"}
+            hashes = match.group(1)
+            level = len(hashes)
+            title = match.group(2).strip().lower()
+            if level == 2:
+                in_modules = title in {"modules", "module specifications", "components"}
+                continue
+            if in_modules and level in {3, 4}:
+                name = match.group(2).strip()
+                if name.lower() not in {"responsibilities", "public interface", "internal structure"}:
+                    modules.add(name)
+                continue
+            if in_modules and level == 2:
+                in_modules = False
             continue
         if in_modules and re.match(r"^[-*]\s+", line.strip()):
             name = re.sub(r"^[-*]\s+", "", line.strip())
             name = re.sub(r"\*\*|\*", "", name).strip()
             if name:
-                modules.add(name)
-
-    # Also collect ### headings as module names
-    for line in content.splitlines():
-        match = re.match(r"^#{3,4}\s+(.+)$", line.strip())
-        if match:
-            name = match.group(1).strip()
-            if name.lower() not in {"responsibilities", "public interface", "internal structure"}:
                 modules.add(name)
 
     return modules
@@ -250,12 +253,15 @@ def main() -> int:
 
     if errors:
         print("Dependency graph errors:")
-        for err in errors:
-            print(f"- {err}")
+        for idx, err in enumerate(errors, start=1):
+            print(f"- [DEP-ERR-{idx:03d}] {err}")
     if warnings:
         print("Dependency graph warnings:")
-        for w in warnings:
-            print(f"- {w}")
+        for idx, w in enumerate(warnings, start=1):
+            print(f"- [DEP-WARN-{idx:03d}] {w}")
+    if errors or warnings:
+        print("Next fix command:")
+        print(f"  python scripts/arch.py deps --path {plan_dir} --strict")
 
     logger.log(
         "info",

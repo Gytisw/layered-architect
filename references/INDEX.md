@@ -2,12 +2,14 @@
 
 Start here:
 - `ARCHITECTURE_WORKFLOW.md` — canonical staged workflow and gates
+- `QUESTION_WORKFLOW.md` — canonical adaptive question flow and ambiguity handling
 
-Core guides:
-- `agent-usage-guide.md` — agent execution flow and constraints
-- `agent-quickstart.md` — minimal command path
-- `interactive-questions.md` — question flows + tool limits
-- `question-guide.md` — layer-by-layer prompts
+Canonical agent docs:
+- `ARCHITECTURE_WORKFLOW.md`
+- `QUESTION_WORKFLOW.md`
+- `INDEX.md`
+
+Supporting guides:
 - `layer-guide.md` — definitions of done per layer
 - `validation-patterns.md` — gate criteria and strict/soft behavior
 - `semantic-validation.md` — sharded semantic validation requirements
@@ -23,3 +25,9 @@ Templates:
 
 Research:
 - `research-template.md` — required log format when research gate applies
+
+Compatibility shims:
+- `agent-usage-guide.md` (redirect)
+- `agent-quickstart.md` (redirect)
+- `interactive-questions.md` (redirect)
+- `question-guide.md` (redirect)

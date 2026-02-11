@@ -31,6 +31,8 @@ Each shard must return findings using this schema:
 - finding_id: CV-001
   boundary: L1-L2 | L2-L3 | L3-L4 | Constraints
   severity: blocker | major | minor | info
+  executor: <subagent_id_or_task_id>
+  evidence_ref: <section|file|source ref>
   issue: "Short summary"
   evidence: "Quoted snippet or section reference"
   expected: "What should be true per constraints/layer"
@@ -96,11 +98,15 @@ The orchestrator should:
 - Deduplicate overlapping findings across shards.
 - Escalate severity if multiple shards report the same violation.
 - Produce a single "Semantic Validation Summary" list.
- - Confirm every required shard is present (A–E, plus F/G if applicable).
+- Confirm every required shard is present (A–E, plus F/G if applicable).
+- In task-capable environments, each shard must include a distinct executor.
 
 ## Gate
 
 Run semantic validation **after** scripted validation.
 If any **blocker** findings exist, do not proceed to implementation.
 If any required shard is missing, validation is incomplete.
-After completion, set `semantic_completed: true` in `.plan/gates.yml`.
+After completion, mark via CLI:
+`python scripts/arch.py semantic complete --path .plan --completed-by <name>`
+
+Do not manually edit `.plan/gates.yml`.

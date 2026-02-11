@@ -13,7 +13,14 @@
     "semantic_completed",
     "dependencies_complete",
     "constraints_registry_present",
-    "last_step"
+    "last_step",
+    "research_approval_receipt",
+    "research_approved_by",
+    "research_approved_at",
+    "semantic_completion_receipt",
+    "semantic_completed_by",
+    "semantic_completed_at",
+    "last_validation_report"
   ],
   "properties": {
     "mode": {
@@ -32,7 +39,28 @@
     "semantic_completed": {"type": "boolean"},
     "dependencies_complete": {"type": "boolean"},
     "constraints_registry_present": {"type": "boolean"},
-    "last_step": {"type": "string"}
+    "last_step": {"type": "string"},
+    "research_approval_receipt": {
+      "type": ["string", "null"]
+    },
+    "research_approved_by": {
+      "type": ["string", "null"]
+    },
+    "research_approved_at": {
+      "type": ["string", "null"]
+    },
+    "semantic_completion_receipt": {
+      "type": ["string", "null"]
+    },
+    "semantic_completed_by": {
+      "type": ["string", "null"]
+    },
+    "semantic_completed_at": {
+      "type": ["string", "null"]
+    },
+    "last_validation_report": {
+      "type": ["string", "null"]
+    }
   },
   "additionalProperties": true
 }

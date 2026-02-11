@@ -1,6 +1,6 @@
 # Layered Architect
 
-Agent-first architecture planning skill that produces professional, audit-friendly system designs. Built for modern agentic tools, with strict validation, decision logs, and traceable constraints.
+Agent-first architecture planning framework with deterministic gates, verifiable research evidence, and semantic cross-layer validation.
 
 **Status:** Production-ready for agent workflows  
 **Scope:** L0–L5 layered architecture + PRD alignment + adaptation of legacy docs
@@ -16,7 +16,9 @@ Architecture work is often inconsistent, non-auditable, and too hard to review. 
 ## Core Capabilities
 
 - **Layered Architecture (L0–L5)** with strict validation
-- **Structured Decision Logs** for cross-validation
+- **Structured Findings Engine** with source path/section/fix command
+- **Receipt-backed Gates** (no manual gate mutation)
+- **Research Evidence Gate** (`research.evidence.json`)
 - **Tradeoff Matrix + Risk Register** baked into the process
 - **PRD generation** aligned to finalized architecture
 - **Universal adapter** to ingest existing docs
@@ -28,14 +30,17 @@ Architecture work is often inconsistent, non-auditable, and too hard to review. 
 
 ```mermaid
 flowchart TD
-  A["L0 Problem Framing (Optional)"] --> B["L1 Meta-Architecture"]
+  A["Doctor/Init"] --> B["L0 Problem Framing (Auto Triggered)"]
   B --> C["L2 System Architecture"]
-  C --> D["L3 Component Design"]
-  D --> X["Dependency Graph (dependencies.yml)"]
+  C --> R["Research Gate (Evidence + Approval)"]
+  R --> D["L3 Component Design"]
+  D --> X["Dependency Gate (dependencies.yml complete)"]
   X --> E["L4 Implementation"]
-  E --> F["L5 Operability & Readiness (Optional)"]
-  E --> S["Semantic Cross-Layer Validation"]
-  S --> G["PRD (Post-Architecture)"]
+  E --> F["L5 Operability & Readiness (Auto Triggered)"]
+  F --> S["Semantic Validation Shards A-E (+F/G)"]
+  S --> V["Strict Validation (Blocking Findings = 0)"]
+  V --> G["Gate Sync (Receipts + Validation Stamp)"]
+  G --> H["Ready for PRD / Execution"]
 ```
 
 ---
@@ -43,6 +48,8 @@ flowchart TD
 ## Repo Layout
 
 - `SKILL.md` Agent instructions and flow
+- `references/ARCHITECTURE_WORKFLOW.md` Canonical staged workflow
+- `references/QUESTION_WORKFLOW.md` Canonical question strategy
 - `assets/` Templates and examples
 - `references/` Guides, validation, question sets, domain profiles
 - `schemas/` JSON schemas for layers and mappings
@@ -76,7 +83,8 @@ Preferred (unified CLI):
 ```bash
 python scripts/arch.py doctor
 python scripts/arch.py init --path .
-python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
+python scripts/arch.py validate --path .plan --strict --format json > .plan/last-validation.json
+python scripts/arch.py gate sync --path .plan --from .plan/last-validation.json
 ```
 
 Agent-friendly:
@@ -91,9 +99,11 @@ python scripts/arch.py validate --path .plan
 python scripts/arch.py deps --path .plan
 ```
 
-## Agent Quickstart (Minimal)
+## Canonical Agent Docs
 
-See: `references/agent-quickstart.md`
+- `SKILL.md`
+- `references/ARCHITECTURE_WORKFLOW.md`
+- `references/QUESTION_WORKFLOW.md`
 
 ---
 
@@ -111,12 +121,7 @@ python scripts/arch.py doctor
 
 ## Optional Layers (L0/L5)
 
-Use only when triggers apply:
-
-- **L0 Problem Framing:** unclear scope, conflicting goals  
-- **L5 Operability & Readiness:** delivery readiness, compliance, cost controls
-
-If you skip L0/L5, record a brief skip reason in L1/L4 or `checkpoint.yml`.
+L0/L5 are auto-triggered by workflow markers and shown in `arch.py status`.
 
 Templates:
 - `assets/template-l0-problem-framing.md`
@@ -207,14 +212,15 @@ Schema:
 
 ---
 
-## Validation & Linting
+## Validation & Diagnostics
 
 Unified CLI:
 ```bash
-python scripts/arch.py validate --path .plan --auto-constraints --auto-deps
+python scripts/arch.py validate --path .plan --strict
 ```
 
-Strict is default: warnings block progression. Use soft mode only with explicit user approval.
+Strict mode blocks on warnings and errors.
+Validation returns structured findings with exact file/section and fix command.
 
 Debug single layer (unified CLI):
 ```bash
@@ -241,7 +247,7 @@ Disable any auto-writes:
 python scripts/arch.py validate --path .plan --auto-constraints --no-write
 ```
 
-## Semantic Cross-Layer Validation
+## Semantic Cross-Layer Validation (Required)
 
 **Required gate.** After scripted validation, run sharded subagent checks:
 `references/semantic-validation.md`
@@ -253,15 +259,26 @@ Required shards include:
 - L0↔L1 if L0 exists
 - L4↔L5 if L5 exists
 
-Do not declare completion until all required shards report.
+Do not declare completion until:
+- semantic shards are validated,
+- semantic completion receipt is written via CLI.
+
+```bash
+python scripts/arch.py semantic validate --path .plan --strict
+python scripts/arch.py semantic complete --path .plan --completed-by <name>
+```
 
 ## Research Gate (Time-Sensitive Decisions)
 
-If architecture decisions depend on time-sensitive info (libraries, cloud services,
-compliance, pricing, security guidance), delegate research to subagents or perform
-web search before finalizing L2/L3. Record sources in `.plan/research.md`
-(or `.plan/research.json`). If research is not possible, document explicit
-assumptions and risks.
+If external dependencies are present, research is required before finalizing L2/L3.
+Required artifacts:
+- `.plan/research.md`
+- `.plan/research.evidence.json`
+
+Approve via CLI (explicit user approval required):
+```bash
+python scripts/arch.py research approve --path .plan --approved-by <name> --confirm-user-approval
+```
 
 ## ADR Generation
 
@@ -287,14 +304,11 @@ Cross-layer semantic checks (constraints, interfaces, modules):
 python scripts/arch.py consistency --path .plan
 ```
 
-## Agent Guide
+## Deterministic Next Step
 
-See `references/agent-usage-guide.md` for agent-specific workflow guidance.
-
-Lint and dependency checks:
 ```bash
-python scripts/arch.py lint --path .
-python scripts/arch.py deps --path .plan
+python scripts/arch.py status --path .plan
+python scripts/arch.py next --path .plan
 ```
 
 ---

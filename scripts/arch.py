@@ -8,9 +8,11 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from uuid import uuid4
 
 import check_consistency
 import check_constraints
@@ -28,6 +30,7 @@ import validate_all
 import validate_dependencies
 import validate_layer
 import validate_semantic_report
+import validate_research_evidence
 from path_utils import resolve_plan_dir
 
 try:
@@ -72,10 +75,17 @@ GATES_REQUIRED_FIELDS = [
     "l5_required",
     "research_required",
     "research_approved",
+    "research_approval_receipt",
+    "research_approved_by",
+    "research_approved_at",
     "semantic_required",
     "semantic_completed",
+    "semantic_completion_receipt",
+    "semantic_completed_by",
+    "semantic_completed_at",
     "dependencies_complete",
     "constraints_registry_present",
+    "last_validation_report",
     "last_step",
 ]
 
@@ -113,6 +123,112 @@ def load_gates(plan_dir: Path) -> Tuple[Dict, List[str]]:
     if missing:
         errors.append("gates.yml missing required keys: " + ", ".join(missing))
     return data, errors
+
+
+def save_gates(plan_dir: Path, gates: Dict) -> None:
+    if yaml is None:
+        raise RuntimeError("PyYAML missing; cannot write gates.yml")
+    gates_path = plan_dir / "gates.yml"
+    gates_path.write_text(yaml.safe_dump(gates, sort_keys=False), encoding="utf-8")
+
+
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def auto_layer_triggers(plan_dir: Path) -> Dict[str, Dict[str, str | bool]]:
+    l1_file = plan_dir / "L1-meta-architecture.md"
+    l2_file = plan_dir / "L2-system-architecture.md"
+    l4_file = plan_dir / "L4-implementation.md"
+
+    l0_required = False
+    l0_reason = "No ambiguity markers detected"
+    if (plan_dir / "L0-problem-framing.md").exists():
+        l0_required = True
+        l0_reason = "L0 document already exists"
+    elif l1_file.exists():
+        text = l1_file.read_text(encoding="utf-8").lower()
+        markers = ["open question", "unknown", "unclear", "tbd", "assumption"]
+        hits = [m for m in markers if m in text]
+        if hits:
+            l0_required = True
+            l0_reason = "Ambiguity markers in L1: " + ", ".join(hits)
+
+    l5_required = False
+    l5_reason = "No production/operability markers detected"
+    if (plan_dir / "L5-operability-readiness.md").exists():
+        l5_required = True
+        l5_reason = "L5 document already exists"
+    else:
+        reason_parts: List[str] = []
+        if has_external_deps_section(plan_dir):
+            reason_parts.append("L2 has external dependencies")
+        if dependencies_has_external_nodes(plan_dir):
+            reason_parts.append("dependencies.yml has external/infrastructure nodes")
+        for candidate in (l2_file, l4_file):
+            if not candidate.exists():
+                continue
+            text = candidate.read_text(encoding="utf-8").lower()
+            markers = ["production", "slo", "sla", "security", "compliance", "on-call", "runbook"]
+            if any(m in text for m in markers):
+                reason_parts.append(f"{candidate.name} includes operability markers")
+                break
+        if reason_parts:
+            l5_required = True
+            l5_reason = "; ".join(reason_parts)
+
+    return {
+        "l0": {"required": l0_required, "reason": l0_reason},
+        "l5": {"required": l5_required, "reason": l5_reason},
+    }
+
+
+def gate_receipts_valid(gates: Dict) -> Tuple[bool, List[str]]:
+    issues: List[str] = []
+    if gates.get("research_approved"):
+        for key in ("research_approval_receipt", "research_approved_by", "research_approved_at"):
+            if not str(gates.get(key, "")).strip() or str(gates.get(key)).strip().lower() == "none":
+                issues.append(f"research_approved is true but {key} is missing")
+    if gates.get("semantic_completed"):
+        for key in ("semantic_completion_receipt", "semantic_completed_by", "semantic_completed_at"):
+            if not str(gates.get(key, "")).strip() or str(gates.get(key)).strip().lower() == "none":
+                issues.append(f"semantic_completed is true but {key} is missing")
+    return (len(issues) == 0), issues
+
+
+def _candidate_validation_inputs(plan_dir: Path) -> List[Path]:
+    paths = [
+        plan_dir / "L0-problem-framing.md",
+        plan_dir / "L1-meta-architecture.md",
+        plan_dir / "L2-system-architecture.md",
+        plan_dir / "L3-component-design.md",
+        plan_dir / "L4-implementation.md",
+        plan_dir / "L5-operability-readiness.md",
+        plan_dir / "constraints.yml",
+        plan_dir / "dependencies.yml",
+        plan_dir / "research.md",
+        plan_dir / "research.json",
+        plan_dir / "research.evidence.json",
+        plan_dir / "semantic-validation.md",
+        plan_dir / "semantic-validation.json",
+    ]
+    return [p for p in paths if p.exists()]
+
+
+def validation_stamp_status(plan_dir: Path, gates: Dict) -> Tuple[bool, str]:
+    report_path = str(gates.get("last_validation_report", "") or "").strip()
+    if not report_path:
+        return False, "last_validation_report is not set"
+    report = Path(report_path).expanduser()
+    if not report.is_absolute():
+        report = (plan_dir.parent / report).resolve()
+    if not report.exists():
+        return False, f"last_validation_report does not exist: {report}"
+    report_mtime = report.stat().st_mtime
+    for candidate in _candidate_validation_inputs(plan_dir):
+        if candidate.stat().st_mtime > report_mtime:
+            return False, f"Validation report is stale (newer input: {candidate.name})"
+    return True, "Validation report is fresh"
 
 
 def find_report(plan_dir: Path, basename: str) -> Optional[Path]:
@@ -182,6 +298,8 @@ def cmd_init(args) -> int:
         argv.extend(["--path", args.path])
     if args.project:
         argv.append(args.project)
+    if args.profile:
+        argv.extend(["--profile", args.profile])
     return run_main(init_architecture.main, argv)
 
 
@@ -341,13 +459,150 @@ def cmd_checkpoint_status(args) -> int:
         return run_main(checkpoint_manager.main, ["checkpoint_manager.py", "list"])
 
 
-def cmd_semantic(args) -> int:
+def cmd_semantic_validate(args) -> int:
     argv = ["validate_semantic_report.py"]
     if args.path:
         argv.extend(["--path", args.path])
     if args.strict:
         argv.append("--strict")
+    if getattr(args, "task_capable", False):
+        argv.append("--task-capable")
     return run_main(validate_semantic_report.main, argv)
+
+
+def cmd_gate_sync(args) -> int:
+    plan_dir, _ = resolve_plan_and_root(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print("No .plan directory found.")
+        return 1
+    gates, gate_errors = load_gates(plan_dir)
+    if gate_errors:
+        print("Gate errors detected:")
+        for err in gate_errors:
+            print(f"- {err}")
+        return 1
+
+    summary_path = Path(args.from_file).expanduser()
+    if not summary_path.is_absolute():
+        summary_path = (Path(".").resolve() / summary_path).resolve()
+    if not summary_path.exists():
+        print(f"Validation summary file not found: {summary_path}")
+        return 1
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"Failed to parse validation summary JSON: {exc}")
+        return 1
+
+    if not isinstance(summary, dict):
+        print("Validation summary must be a JSON object.")
+        return 1
+    if summary.get("overall") != "PASS":
+        print("Cannot sync gates from failing validation summary (overall != PASS).")
+        return 1
+
+    triggers = auto_layer_triggers(plan_dir)
+    gates["l0_required"] = bool(triggers["l0"]["required"])
+    gates["l5_required"] = bool(triggers["l5"]["required"])
+    gates["dependencies_complete"] = summary.get("dependencies", {}).get("status") == "OK"
+    gates["constraints_registry_present"] = (plan_dir / "constraints.yml").exists()
+    gates["last_validation_report"] = str(summary_path)
+    gates["last_step"] = "gate_sync"
+    gates["last_validation_synced_at"] = now_utc_iso()
+    gates["last_validation_receipt"] = f"val-{uuid4()}"
+    save_gates(plan_dir, gates)
+    print("Gate sync complete.")
+    print(f"- last_validation_report: {summary_path}")
+    print(f"- l0_required: {gates['l0_required']} ({triggers['l0']['reason']})")
+    print(f"- l5_required: {gates['l5_required']} ({triggers['l5']['reason']})")
+    return 0
+
+
+def cmd_research_approve(args) -> int:
+    plan_dir, _ = resolve_plan_and_root(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print("No .plan directory found.")
+        return 1
+    gates, gate_errors = load_gates(plan_dir)
+    if gate_errors:
+        print("Gate errors detected:")
+        for err in gate_errors:
+            print(f"- {err}")
+        return 1
+    if not args.confirm_user_approval:
+        print("BLOCKED: --confirm-user-approval is required for research approval.")
+        return 1
+
+    evidence = Path(args.evidence).expanduser() if args.evidence else (plan_dir / "research.evidence.json")
+    if not evidence.is_absolute():
+        evidence = (Path(".").resolve() / evidence).resolve()
+    warnings, errors = validate_research_evidence.validate_evidence_file(plan_dir, evidence_path=evidence, strict=True)
+    if errors or warnings:
+        print("Research evidence validation failed.")
+        for err in errors:
+            print(f"- ERROR: {err}")
+        for warn in warnings:
+            print(f"- WARNING: {warn}")
+        print("Provide complete evidence before approving research.")
+        return 1
+
+    gates["research_required"] = True
+    gates["research_approved"] = True
+    gates["research_approval_receipt"] = f"research-{uuid4()}"
+    gates["research_approved_by"] = args.approved_by
+    gates["research_approved_at"] = now_utc_iso()
+    gates["research_evidence_ref"] = str(evidence)
+    gates["last_step"] = "research_approved"
+    save_gates(plan_dir, gates)
+    print("Research gate approved.")
+    print(f"- receipt: {gates['research_approval_receipt']}")
+    return 0
+
+
+def cmd_research_validate(args) -> int:
+    argv = ["validate_research_evidence.py"]
+    if args.path:
+        argv.extend(["--path", args.path])
+    if args.evidence:
+        argv.extend(["--evidence", args.evidence])
+    if args.strict:
+        argv.append("--strict")
+    return run_main(validate_research_evidence.main, argv)
+
+
+def cmd_semantic_complete(args) -> int:
+    plan_dir, _ = resolve_plan_and_root(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print("No .plan directory found.")
+        return 1
+    gates, gate_errors = load_gates(plan_dir)
+    if gate_errors:
+        print("Gate errors detected:")
+        for err in gate_errors:
+            print(f"- {err}")
+        return 1
+
+    task_capable = bool(args.task_capable or os.getenv("LAYERED_ARCH_TASK_CAPABLE"))
+    warnings, errors = validate_semantic_report.validate_report(plan_dir, task_capable=task_capable)
+    if errors or warnings:
+        print("Semantic completion blocked.")
+        for err in errors:
+            print(f"- ERROR: {err}")
+        for warn in warnings:
+            print(f"- WARNING: {warn}")
+        print("Fix semantic report findings before marking completion.")
+        return 1
+
+    gates["semantic_required"] = True
+    gates["semantic_completed"] = True
+    gates["semantic_completion_receipt"] = f"semantic-{uuid4()}"
+    gates["semantic_completed_by"] = args.completed_by
+    gates["semantic_completed_at"] = now_utc_iso()
+    gates["last_step"] = "semantic_completed"
+    save_gates(plan_dir, gates)
+    print("Semantic gate completed.")
+    print(f"- receipt: {gates['semantic_completion_receipt']}")
+    return 0
 
 
 def cmd_status(args) -> int:
@@ -358,14 +613,17 @@ def cmd_status(args) -> int:
         return 1
 
     gates, gate_errors = load_gates(plan_dir)
-    l0_required = bool(gates.get("l0_required", False))
-    l5_required = bool(gates.get("l5_required", False))
+    triggers = auto_layer_triggers(plan_dir)
+    l0_required = bool(triggers["l0"]["required"])
+    l5_required = bool(triggers["l5"]["required"])
     semantic_required = bool(gates.get("semantic_required", True))
     semantic_completed = bool(gates.get("semantic_completed", False))
     research_required = bool(gates.get("research_required", False))
     if has_external_deps_section(plan_dir) or dependencies_has_external_nodes(plan_dir):
         research_required = True
     research_approved = bool(gates.get("research_approved", False))
+    receipts_ok, receipt_issues = gate_receipts_valid(gates)
+    stamp_ok, stamp_reason = validation_stamp_status(plan_dir, gates)
 
     def fmt(ok: bool, skip: bool = False) -> str:
         if skip:
@@ -393,31 +651,52 @@ def cmd_status(args) -> int:
         for err in gate_errors:
             print(f"  - {err}")
     print(f"- L0 required: {l0_required} ({fmt(l0_exists, skip=not l0_required)})")
+    print(f"  reason: {triggers['l0']['reason']}")
     print(f"- L1 present: {fmt(l1_exists)}")
     print(f"- Constraints registry: {fmt(constraints_present)}")
     print(f"- Research required: {research_required} ({fmt(research_approved, skip=not research_required)})")
+    print(f"  research receipt: {gates.get('research_approval_receipt')}")
+    print(f"  approved_by: {gates.get('research_approved_by')}")
+    print(f"  approved_at: {gates.get('research_approved_at')}")
     print(f"- Research log: {fmt(bool(research_log), skip=not research_required)}")
     print(f"- L2 present: {fmt(l2_exists)}")
     print(f"- Dependencies status: {dep_status} ({fmt(dep_complete)})")
     print(f"- L3 present: {fmt(l3_exists)}")
     print(f"- L4 present: {fmt(l4_exists)}")
     print(f"- L5 required: {l5_required} ({fmt(l5_exists, skip=not l5_required)})")
+    print(f"  reason: {triggers['l5']['reason']}")
     print(f"- Semantic report: {fmt(bool(semantic_report), skip=not semantic_required)}")
     print(f"- Semantic completed: {fmt(semantic_completed, skip=not semantic_required)}")
+    print(f"  semantic receipt: {gates.get('semantic_completion_receipt')}")
+    print(f"  completed_by: {gates.get('semantic_completed_by')}")
+    print(f"  completed_at: {gates.get('semantic_completed_at')}")
+    print(f"- Gate receipts valid: {fmt(receipts_ok)}")
+    if not receipts_ok:
+        for issue in receipt_issues:
+            print(f"  - {issue}")
+    print(f"- Validation stamp fresh: {fmt(stamp_ok)}")
+    print(f"  reason: {stamp_reason}")
     return 0
 
 
-def next_required_action(plan_dir: Path, gates: Dict, gate_errors: List[str]) -> str:
+def next_required_action(plan_dir: Path, gates: Dict, gate_errors: List[str]) -> Tuple[str, str]:
     if gate_errors:
-        return "Fix .plan/gates.yml to include all required keys (see schemas/gates.schema.json)."
-    l0_required = bool(gates.get("l0_required", False))
-    l5_required = bool(gates.get("l5_required", False))
+        return (
+            "Fix invalid gates schema fields.",
+            "python scripts/arch.py status --path .plan",
+        )
+
+    triggers = auto_layer_triggers(plan_dir)
+    l0_required = bool(triggers["l0"]["required"])
+    l5_required = bool(triggers["l5"]["required"])
     semantic_required = bool(gates.get("semantic_required", True))
     semantic_completed = bool(gates.get("semantic_completed", False))
     research_required = bool(gates.get("research_required", False))
     if has_external_deps_section(plan_dir) or dependencies_has_external_nodes(plan_dir):
         research_required = True
     research_approved = bool(gates.get("research_approved", False))
+    receipts_ok, receipt_issues = gate_receipts_valid(gates)
+    stamp_ok, _ = validation_stamp_status(plan_dir, gates)
 
     l0_file = plan_dir / "L0-problem-framing.md"
     l1_file = plan_dir / "L1-meta-architecture.md"
@@ -427,30 +706,66 @@ def next_required_action(plan_dir: Path, gates: Dict, gate_errors: List[str]) ->
     l5_file = plan_dir / "L5-operability-readiness.md"
 
     if l0_required and not l0_file.exists():
-        return "Complete L0: .plan/L0-problem-framing.md"
+        return ("Complete L0 problem framing.", "python scripts/arch.py next --path .plan")
     if not l1_file.exists():
-        return "Complete L1: .plan/L1-meta-architecture.md"
+        return ("Complete L1 meta-architecture.", "python scripts/arch.py next --path .plan")
     if not (plan_dir / "constraints.yml").exists():
-        return "Create constraints registry: arch.py constraints extract --path .plan/L1-meta-architecture.md"
+        return (
+            "Create constraints registry from L1.",
+            "python scripts/arch.py constraints extract --path .plan/L1-meta-architecture.md --out .plan/constraints.yml",
+        )
+    if not receipts_ok:
+        return (
+            "Repair invalid gate receipts before progression.",
+            "python scripts/arch.py status --path .plan",
+        )
     if research_required and not research_approved:
-        return "Get user approval for research and set research_approved: true in .plan/gates.yml"
+        return (
+            "Research is required and not approved.",
+            "python scripts/arch.py research approve --path .plan --approved-by <name> --confirm-user-approval",
+        )
     if research_required and not find_report(plan_dir, "research"):
-        return "Create research log: .plan/research.md (see references/research-template.md)"
+        return (
+            "Create research log artifact.",
+            "python scripts/arch.py status --path .plan",
+        )
+    if research_required and not (plan_dir / "research.evidence.json").exists():
+        return (
+            "Create research evidence bundle.",
+            "python scripts/arch.py status --path .plan",
+        )
     if not l2_file.exists():
-        return "Complete L2: .plan/L2-system-architecture.md"
+        return ("Complete L2 system architecture.", "python scripts/arch.py next --path .plan")
     if dependency_status(plan_dir) != "complete":
-        return "Complete dependency graph: .plan/dependencies.yml (status: complete) and run arch.py deps"
+        return (
+            "Complete dependencies graph and validate it.",
+            "python scripts/arch.py deps --path .plan",
+        )
     if not l3_file.exists():
-        return "Complete L3: .plan/L3-component-design.md"
+        return ("Complete L3 component design.", "python scripts/arch.py next --path .plan")
     if not l4_file.exists():
-        return "Complete L4: .plan/L4-implementation.md"
+        return ("Complete L4 implementation plan.", "python scripts/arch.py next --path .plan")
     if l5_required and not l5_file.exists():
-        return "Complete L5: .plan/L5-operability-readiness.md"
+        return ("Complete L5 operability/readiness.", "python scripts/arch.py next --path .plan")
     if semantic_required and not find_report(plan_dir, "semantic-validation"):
-        return "Create semantic validation report: .plan/semantic-validation.md"
+        return (
+            "Create semantic validation report shards.",
+            "python scripts/arch.py semantic validate --path .plan --strict",
+        )
     if semantic_required and not semantic_completed:
-        return "Set semantic_completed: true in .plan/gates.yml after review"
-    return "Run final validation: python scripts/arch.py validate --path .plan"
+        return (
+            "Mark semantic gate complete via CLI.",
+            "python scripts/arch.py semantic complete --path .plan --completed-by <name>",
+        )
+    if not stamp_ok:
+        return (
+            "Validation stamp is stale or missing.",
+            "python scripts/arch.py validate --path .plan --format json > .plan/last-validation.json && python scripts/arch.py gate sync --path .plan --from .plan/last-validation.json",
+        )
+    return (
+        "Run final strict validation and sync gates.",
+        "python scripts/arch.py validate --path .plan --strict --format json > .plan/last-validation.json && python scripts/arch.py gate sync --path .plan --from .plan/last-validation.json",
+    )
 
 
 def cmd_next(args) -> int:
@@ -459,7 +774,9 @@ def cmd_next(args) -> int:
         print("Next step: python scripts/arch.py init --path .")
         return 1
     gates, gate_errors = load_gates(plan_dir)
-    print(next_required_action(plan_dir, gates, gate_errors))
+    action, command = next_required_action(plan_dir, gates, gate_errors)
+    print(f"REQUIRED ACTION: {action}")
+    print(f"COMMAND: {command}")
     return 0
 
 
@@ -476,8 +793,8 @@ def cmd_run(args) -> int:
             print(f"- {err}")
         print("BLOCKED: Fix gates.yml before proceeding.")
         return 1
-    next_action = next_required_action(plan_dir, gates, gate_errors)
-    if next_action.startswith("Run final validation"):
+    action, command = next_required_action(plan_dir, gates, gate_errors)
+    if action.startswith("Run final strict validation"):
         mode = str(gates.get("mode", "strict")).strip().lower()
         argv = ["validate_all.py", "--path", str(plan_dir)]
         if mode == "soft":
@@ -486,7 +803,8 @@ def cmd_run(args) -> int:
             argv.append("--strict")
         return run_main(validate_all.main, argv)
     print("BLOCKED: Next required action:")
-    print(f"- {next_action}")
+    print(f"- {action}")
+    print(f"- {command}")
     return 1
 
 
@@ -604,7 +922,7 @@ def cmd_doctor(args) -> int:
     result.update(
         {
             "status": "ready",
-            "next_step": "python scripts/arch.py validate --path .plan --auto-constraints --auto-deps",
+            "next_step": "python scripts/arch.py validate --path .plan --strict --format json > .plan/last-validation.json && python scripts/arch.py gate sync --path .plan --from .plan/last-validation.json",
             "reason": "All core artifacts present",
         }
     )
@@ -612,7 +930,11 @@ def cmd_doctor(args) -> int:
         print(json.dumps(result, indent=2))
         return 0
     print("All core artifacts present.")
-    print("Next step: python scripts/arch.py validate --path .plan --auto-constraints --auto-deps")
+    print(
+        "Next step: python scripts/arch.py validate --path .plan --strict --format json "
+        "> .plan/last-validation.json && python scripts/arch.py gate sync --path .plan "
+        "--from .plan/last-validation.json"
+    )
     return 0
 
 
@@ -624,6 +946,12 @@ def main() -> int:
     p_init.add_argument("project", nargs="?", help="Project name or path")
     p_init.add_argument("--path", help="Path to existing project root or .plan")
     p_init.add_argument("--here", action="store_true", help="Initialize in current dir")
+    p_init.add_argument(
+        "--profile",
+        default="agent-ai",
+        choices=["agent-ai", "blank"],
+        help="Template profile to seed architecture files.",
+    )
     p_init.set_defaults(func=cmd_init)
 
     p_validate = sub.add_parser("validate", help="Validate architecture")
@@ -715,10 +1043,51 @@ def main() -> int:
     p_cp_status.add_argument("--path", help="Path to project or .plan")
     p_cp_status.set_defaults(func=cmd_checkpoint_status)
 
-    p_semantic = sub.add_parser("semantic", help="Validate semantic report shards")
-    p_semantic.add_argument("--path", help="Path to .plan")
-    p_semantic.add_argument("--strict", action="store_true")
-    p_semantic.set_defaults(func=cmd_semantic)
+    p_gate = sub.add_parser("gate", help="Gate operations")
+    gate_sub = p_gate.add_subparsers(dest="gate_cmd", required=True)
+    p_gate_sync = gate_sub.add_parser("sync", help="Sync derived gate fields from validation JSON")
+    p_gate_sync.add_argument("--path", help="Path to .plan or project")
+    p_gate_sync.add_argument("--from", dest="from_file", required=True, help="Path to validation JSON output")
+    p_gate_sync.set_defaults(func=cmd_gate_sync)
+
+    p_research = sub.add_parser("research", help="Research gate operations")
+    research_sub = p_research.add_subparsers(dest="research_cmd", required=True)
+    p_research_approve = research_sub.add_parser("approve", help="Approve research gate with evidence")
+    p_research_approve.add_argument("--path", help="Path to .plan or project")
+    p_research_approve.add_argument("--evidence", help="Path to research evidence JSON")
+    p_research_approve.add_argument("--approved-by", required=True, help="Approver identity")
+    p_research_approve.add_argument(
+        "--confirm-user-approval",
+        action="store_true",
+        help="Required acknowledgement that user approved research progression",
+    )
+    p_research_approve.set_defaults(func=cmd_research_approve)
+    p_research_validate = research_sub.add_parser("validate", help="Validate research evidence bundle")
+    p_research_validate.add_argument("--path", help="Path to .plan or project")
+    p_research_validate.add_argument("--evidence", help="Path to research evidence JSON")
+    p_research_validate.add_argument("--strict", action="store_true")
+    p_research_validate.set_defaults(func=cmd_research_validate)
+
+    p_semantic = sub.add_parser("semantic", help="Semantic validation operations")
+    semantic_sub = p_semantic.add_subparsers(dest="semantic_cmd", required=True)
+    p_semantic_validate = semantic_sub.add_parser("validate", help="Validate semantic report shards")
+    p_semantic_validate.add_argument("--path", help="Path to .plan")
+    p_semantic_validate.add_argument("--strict", action="store_true")
+    p_semantic_validate.add_argument(
+        "--task-capable",
+        action="store_true",
+        help="Require one executor per shard",
+    )
+    p_semantic_validate.set_defaults(func=cmd_semantic_validate)
+    p_semantic_complete = semantic_sub.add_parser("complete", help="Mark semantic gate complete")
+    p_semantic_complete.add_argument("--path", help="Path to .plan or project")
+    p_semantic_complete.add_argument("--completed-by", required=True, help="Completer identity")
+    p_semantic_complete.add_argument(
+        "--task-capable",
+        action="store_true",
+        help="Require one executor per shard",
+    )
+    p_semantic_complete.set_defaults(func=cmd_semantic_complete)
 
     p_doctor = sub.add_parser("doctor", help="Suggest next action")
     p_doctor.add_argument("--path", help="Path to project or .plan")

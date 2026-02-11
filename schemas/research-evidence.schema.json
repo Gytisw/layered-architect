@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Layered Architect Research Evidence",
+  "type": "object",
+  "required": [
+    "version",
+    "generated_at",
+    "research_scope",
+    "executor",
+    "sources",
+    "claims"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "research_scope": {
+      "type": "string"
+    },
+    "executor": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["subagent", "websearch", "hybrid", "manual_user_input"]
+        },
+        "task_ids": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "retrieved_at"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "url": {"type": "string"},
+          "reference": {"type": "string"},
+          "retrieved_at": {"type": "string"}
+        },
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "source_ids", "decision_impacts"],
+        "properties": {
+          "id": {"type": "string"},
+          "text": {"type": "string"},
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
+          "decision_impacts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": true
+}

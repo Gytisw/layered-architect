@@ -8,6 +8,8 @@ import json
 import os
 import re
 import sys
+from io import StringIO
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Dict, List
 
@@ -20,6 +22,8 @@ import check_consistency
 import extract_constraints
 import validate_dependencies
 import validate_semantic_report
+import validate_research_evidence
+from findings import make_finding, blocking_findings, next_fix_command
 
 try:
     import yaml  # type: ignore
@@ -34,10 +38,17 @@ GATES_REQUIRED_FIELDS = [
     "l5_required",
     "research_required",
     "research_approved",
+    "research_approval_receipt",
+    "research_approved_by",
+    "research_approved_at",
     "semantic_required",
     "semantic_completed",
+    "semantic_completion_receipt",
+    "semantic_completed_by",
+    "semantic_completed_at",
     "dependencies_complete",
     "constraints_registry_present",
+    "last_validation_report",
     "last_step",
 ]
 
@@ -63,6 +74,21 @@ def load_gates(plan_dir: Path) -> tuple[Dict, List[str]]:
     if missing:
         errors.append("gates.yml missing required keys: " + ", ".join(missing))
     return data, errors
+
+
+def _gate_receipts_valid(gates: Dict) -> List[str]:
+    issues: List[str] = []
+    if gates.get("research_approved"):
+        for key in ("research_approval_receipt", "research_approved_by", "research_approved_at"):
+            value = str(gates.get(key, "")).strip().lower()
+            if not value or value == "none":
+                issues.append(f"research_approved is true but {key} is missing")
+    if gates.get("semantic_completed"):
+        for key in ("semantic_completion_receipt", "semantic_completed_by", "semantic_completed_at"):
+            value = str(gates.get(key, "")).strip().lower()
+            if not value or value == "none":
+                issues.append(f"semantic_completed is true but {key} is missing")
+    return issues
 
 
 def main() -> int:
@@ -102,30 +128,98 @@ def main() -> int:
         return 1
 
     results: Dict[str, Dict] = {}
-    warnings_total = 0
-    errors_total = 0
+    findings_all: List[Dict] = []
+
+    def add_generic_finding(
+        *,
+        finding_id: str,
+        severity: str,
+        layer: str,
+        file: Path,
+        section: str,
+        message: str,
+        why_blocking: str,
+        fix_hint: str,
+        fix_command: str,
+        line: int | None = None,
+    ) -> None:
+        findings_all.append(
+            make_finding(
+                finding_id=finding_id,
+                severity=severity,
+                layer=layer,
+                file=str(file),
+                section=section,
+                line=line,
+                message=message,
+                why_blocking=why_blocking,
+                fix_hint=fix_hint,
+                fix_command=fix_command,
+            )
+        )
 
     gates, gate_errors = load_gates(plan_dir)
     if gate_errors:
         status = "ERROR" if args.strict else "WARN"
-        if args.strict:
-            errors_total += 1
-        else:
-            warnings_total += 1
         results["gates"] = {"status": status, "errors": gate_errors}
+        for idx, err in enumerate(gate_errors, start=1):
+            add_generic_finding(
+                finding_id=f"VAL-GATE-SCHEMA-{idx:03d}",
+                severity="error" if args.strict else "warning",
+                layer="GLOBAL",
+                file=plan_dir / "gates.yml",
+                section="gates.yml",
+                message=err,
+                why_blocking="Gate state is invalid and cannot be trusted for deterministic progression.",
+                fix_hint="Repair missing/invalid keys in gates.yml using the documented schema.",
+                fix_command="python scripts/arch.py status --path .plan",
+            )
+    else:
+        receipt_issues = _gate_receipts_valid(gates)
+        for idx, issue in enumerate(receipt_issues, start=1):
+            add_generic_finding(
+                finding_id=f"VAL-GATE-RECEIPT-{idx:03d}",
+                severity="error" if args.strict else "warning",
+                layer="GLOBAL",
+                file=plan_dir / "gates.yml",
+                section="gates.yml",
+                message=issue,
+                why_blocking="Manual gate state mutation bypasses approval and completion receipts.",
+                fix_hint="Use arch.py research approve / arch.py semantic complete to set gate states.",
+                fix_command="python scripts/arch.py status --path .plan",
+            )
 
     layers = ["L0", "L1", "L2", "L3", "L4", "L5"]
     for layer in layers:
         optional_missing_ok = layer in {"L0", "L5"}
-        warnings = validate_layer.validate_layer(
-            plan_dir, layer, optional_missing_ok=optional_missing_ok
-        )
-        if warnings is None:
-            results[layer] = {"status": "ERROR", "warnings": None}
-            errors_total += 1
+        if args.format == "json":
+            with redirect_stdout(StringIO()):
+                layer_findings = validate_layer.validate_layer(
+                    plan_dir, layer, optional_missing_ok=optional_missing_ok
+                )
         else:
-            results[layer] = {"status": "OK", "warnings": len(warnings)}
-            warnings_total += len(warnings)
+            layer_findings = validate_layer.validate_layer(
+                plan_dir, layer, optional_missing_ok=optional_missing_ok
+            )
+        if layer_findings is None:
+            results[layer] = {"status": "ERROR", "warnings": None}
+            add_generic_finding(
+                finding_id=f"VAL-{layer}-FATAL",
+                severity="error",
+                layer=layer,
+                file=plan_dir / f"{layer}-unknown.md",
+                section=layer,
+                message=f"{layer} validation failed due to fatal error.",
+                why_blocking="Layer cannot be validated.",
+                fix_hint=f"Run layer validation directly and fix file/path errors for {layer}.",
+                fix_command=f"python scripts/arch.py validate --layer {layer} --path {plan_dir}",
+            )
+        else:
+            warnings = len([f for f in layer_findings if f.get("severity") == "warning"])
+            errors = len([f for f in layer_findings if f.get("severity") == "error"])
+            status = "ERROR" if errors else ("WARN" if warnings else "OK")
+            results[layer] = {"status": status, "warnings": warnings, "errors": errors}
+            findings_all.extend(layer_findings)
 
     # Optional auto-constraints
     auto_added = 0
@@ -172,10 +266,35 @@ def main() -> int:
 
     # Constraints
     checker = ConstraintChecker(plan_dir)
-    checker.run()
-    if checker.errors:
-        errors_total += len(checker.errors)
-    warnings_total += len(checker.warnings)
+    if args.format == "json":
+        with redirect_stdout(StringIO()):
+            checker.run()
+    else:
+        checker.run()
+    for idx, err in enumerate(checker.errors, start=1):
+        add_generic_finding(
+            finding_id=f"VAL-CONSTRAINT-ERROR-{idx:03d}",
+            severity="error",
+            layer="GLOBAL",
+            file=plan_dir / "constraints.yml",
+            section="Constraint Registry",
+            message=err,
+            why_blocking="Constraint registry errors break traceability checks.",
+            fix_hint="Fix constraint registry schema/content issues.",
+            fix_command=f"python scripts/arch.py constraints check --path {plan_dir}",
+        )
+    for idx, warn in enumerate(checker.warnings, start=1):
+        add_generic_finding(
+            finding_id=f"VAL-CONSTRAINT-WARN-{idx:03d}",
+            severity="warning",
+            layer="GLOBAL",
+            file=plan_dir / "constraints.yml",
+            section="Constraint Registry",
+            message=warn,
+            why_blocking="Constraint quality issues reduce downstream consistency.",
+            fix_hint="Address inconsistent, conflicting, or unreferenced constraints.",
+            fix_command=f"python scripts/arch.py constraints check --path {plan_dir}",
+        )
     results["constraints"] = {
         "status": "OK" if not checker.errors else "ERROR",
         "warnings": len(checker.warnings),
@@ -188,9 +307,30 @@ def main() -> int:
     dep_warnings, dep_errors = validate_dependencies.validate_dependencies(
         plan_dir, auto_stub=args.auto_deps, no_write=readonly
     )
-    if dep_errors:
-        errors_total += len(dep_errors)
-    warnings_total += len(dep_warnings)
+    for idx, err in enumerate(dep_errors, start=1):
+        add_generic_finding(
+            finding_id=f"VAL-DEPENDENCY-ERROR-{idx:03d}",
+            severity="error",
+            layer="GLOBAL",
+            file=plan_dir / "dependencies.yml",
+            section="Dependency Graph",
+            message=err,
+            why_blocking="Dependency graph must be valid before layer progression.",
+            fix_hint="Fix dependency schema, status, nodes, or cycle errors.",
+            fix_command=f"python scripts/arch.py deps --path {plan_dir} --strict",
+        )
+    for idx, warn in enumerate(dep_warnings, start=1):
+        add_generic_finding(
+            finding_id=f"VAL-DEPENDENCY-WARN-{idx:03d}",
+            severity="warning",
+            layer="GLOBAL",
+            file=plan_dir / "dependencies.yml",
+            section="Dependency Graph",
+            message=warn,
+            why_blocking="Dependency drift weakens cross-layer validation quality.",
+            fix_hint="Align dependencies graph with L3/L4 design.",
+            fix_command=f"python scripts/arch.py deps --path {plan_dir}",
+        )
     results["dependencies"] = {
         "status": "OK" if not dep_errors else "ERROR",
         "warnings": len(dep_warnings),
@@ -202,23 +342,61 @@ def main() -> int:
     check_consistency.check_constraints(plan_dir, consistency_warnings)
     check_consistency.check_interfaces(plan_dir, consistency_warnings)
     check_consistency.check_modules_vs_files(plan_dir, consistency_warnings)
+    for idx, warn in enumerate(consistency_warnings, start=1):
+        add_generic_finding(
+            finding_id=f"VAL-CONSISTENCY-WARN-{idx:03d}",
+            severity="warning",
+            layer="GLOBAL",
+            file=plan_dir,
+            section="Cross-layer Consistency",
+            message=warn,
+            why_blocking="Cross-layer drift can invalidate architecture quality gates.",
+            fix_hint="Align referenced interfaces/modules/constraints between adjacent layers.",
+            fix_command=f"python scripts/arch.py consistency --path {plan_dir}",
+        )
     results["consistency"] = {
         "status": "OK" if not consistency_warnings else "WARN",
         "warnings": len(consistency_warnings),
     }
-    warnings_total += len(consistency_warnings)
 
     # Lint
     linter = ArchitectureLinter(plan_dir)
-    lint_exit = linter.run()
+    if args.format == "json":
+        with redirect_stdout(StringIO()):
+            lint_exit = linter.run()
+    else:
+        lint_exit = linter.run()
+    for idx, issue in enumerate(linter.report.errors(), start=1):
+        add_generic_finding(
+            finding_id=f"VAL-LINT-ERROR-{idx:03d}",
+            severity="error",
+            layer="GLOBAL",
+            file=Path(str(issue.file)),
+            section="Lint",
+            line=getattr(issue, "line", None),
+            message=issue.message,
+            why_blocking="Lint errors indicate malformed architecture docs.",
+            fix_hint="Fix malformed markdown/content issues reported by linter.",
+            fix_command=f"python scripts/arch.py lint --path {plan_dir} --strict",
+        )
+    for idx, issue in enumerate(linter.report.warnings(), start=1):
+        add_generic_finding(
+            finding_id=f"VAL-LINT-WARN-{idx:03d}",
+            severity="warning",
+            layer="GLOBAL",
+            file=Path(str(issue.file)),
+            section="Lint",
+            line=getattr(issue, "line", None),
+            message=issue.message,
+            why_blocking="Lint warnings represent quality defects under strict mode.",
+            fix_hint="Resolve warning-level lint issues in architecture docs.",
+            fix_command=f"python scripts/arch.py lint --path {plan_dir} --strict",
+        )
     results["lint"] = {
         "status": "OK" if lint_exit == 0 else "ERROR",
         "warnings": len(linter.report.warnings()),
         "errors": len(linter.report.errors()),
     }
-    warnings_total += len(linter.report.warnings())
-    if lint_exit != 0:
-        errors_total += 1
 
     # Semantic validation + research gates
     def find_report(basename: str) -> Path | None:
@@ -275,11 +453,34 @@ def main() -> int:
 
     # Semantic validation report
     if semantic_required:
-        semantic_warnings, semantic_errors = validate_semantic_report.validate_report(plan_dir)
-        if semantic_errors:
-            errors_total += len(semantic_errors)
-        if semantic_warnings:
-            warnings_total += len(semantic_warnings)
+        task_capable = bool(os.getenv("LAYERED_ARCH_TASK_CAPABLE"))
+        semantic_warnings, semantic_errors = validate_semantic_report.validate_report(
+            plan_dir, task_capable=task_capable
+        )
+        for idx, err in enumerate(semantic_errors, start=1):
+            add_generic_finding(
+                finding_id=f"VAL-SEMANTIC-ERROR-{idx:03d}",
+                severity="error",
+                layer="GLOBAL",
+                file=plan_dir / "semantic-validation.md",
+                section="Semantic Validation",
+                message=err,
+                why_blocking="Semantic validation artifacts are invalid.",
+                fix_hint="Repair semantic report and shard coverage.",
+                fix_command=f"python scripts/arch.py semantic validate --path {plan_dir} --strict",
+            )
+        for idx, warn in enumerate(semantic_warnings, start=1):
+            add_generic_finding(
+                finding_id=f"VAL-SEMANTIC-WARN-{idx:03d}",
+                severity="warning",
+                layer="GLOBAL",
+                file=plan_dir / "semantic-validation.md",
+                section="Semantic Validation",
+                message=warn,
+                why_blocking="Incomplete semantic validation can hide cross-layer drift.",
+                fix_hint="Complete missing shards/findings/evidence/executor metadata.",
+                fix_command=f"python scripts/arch.py semantic validate --path {plan_dir} --strict",
+            )
         semantic_status = "OK"
         if semantic_errors:
             semantic_status = "ERROR"
@@ -293,46 +494,117 @@ def main() -> int:
 
         if not semantic_completed:
             msg = "semantic_completed is false in .plan/gates.yml"
+            add_generic_finding(
+                finding_id="VAL-SEMANTIC-GATE",
+                severity="error" if args.strict else "warning",
+                layer="GLOBAL",
+                file=plan_dir / "gates.yml",
+                section="Semantic Gate",
+                message=msg,
+                why_blocking="Semantic completion must be receipt-backed before progression.",
+                fix_hint="Run semantic validation and complete the semantic gate using arch.py.",
+                fix_command=f"python scripts/arch.py semantic complete --path {plan_dir} --completed-by <name>",
+            )
             if args.strict:
-                errors_total += 1
                 results["semantic_validation"]["status"] = "ERROR"
-            else:
-                warnings_total += 1
-                if results["semantic_validation"]["status"] == "OK":
-                    results["semantic_validation"]["status"] = "WARN"
+            elif results["semantic_validation"]["status"] == "OK":
+                results["semantic_validation"]["status"] = "WARN"
             results["semantic_validation"]["gate"] = msg
     else:
         results["semantic_validation"] = {"status": "SKIP", "required": False}
 
     # Research log gate
     research_file = find_report("research")
+    research_evidence_file = plan_dir / "research.evidence.json"
     research_status = "OK"
     research_messages: List[str] = []
     if research_required and not research_approved:
         research_messages.append("research_approved is false in .plan/gates.yml")
-        if args.strict:
-            errors_total += 1
-            research_status = "ERROR"
-        else:
-            warnings_total += 1
-            research_status = "WARN"
+        add_generic_finding(
+            finding_id="VAL-RESEARCH-APPROVAL",
+            severity="error" if args.strict else "warning",
+            layer="GLOBAL",
+            file=plan_dir / "gates.yml",
+            section="Research Gate",
+            message="research_approved is false in .plan/gates.yml",
+            why_blocking="Research-required architecture cannot progress without explicit approval.",
+            fix_hint="Obtain user approval and record it via arch.py research approve.",
+            fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+        )
+        research_status = "ERROR" if args.strict else "WARN"
     if research_required and research_file is None:
         research_messages.append("Research log required (.plan/research.md or .json)")
-        if args.strict:
-            errors_total += 1
+        add_generic_finding(
+            finding_id="VAL-RESEARCH-LOG",
+            severity="error" if args.strict else "warning",
+            layer="GLOBAL",
+            file=plan_dir / "research.md",
+            section="Research Gate",
+            message="Research log required (.plan/research.md or .json)",
+            why_blocking="Research decisions must be explicitly logged for auditability.",
+            fix_hint="Create .plan/research.md from references/research-template.md.",
+            fix_command=f"python scripts/arch.py status --path {plan_dir}",
+        )
+        research_status = "ERROR" if args.strict else "WARN"
+    if research_required and not research_evidence_file.exists():
+        research_messages.append("Research evidence required (.plan/research.evidence.json)")
+        add_generic_finding(
+            finding_id="VAL-RESEARCH-EVIDENCE-MISSING",
+            severity="error" if args.strict else "warning",
+            layer="GLOBAL",
+            file=research_evidence_file,
+            section="Research Gate",
+            message="Research evidence required (.plan/research.evidence.json)",
+            why_blocking="Evidence bundle is mandatory to prevent hallucinated research.",
+            fix_hint="Create research.evidence.json with sources, claims, and decision impacts.",
+            fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+        )
+        research_status = "ERROR" if args.strict else "WARN"
+    if research_required and research_evidence_file.exists():
+        research_warnings, research_errors = validate_research_evidence.validate_evidence_file(
+            plan_dir, evidence_path=research_evidence_file, strict=args.strict
+        )
+        for idx, err in enumerate(research_errors, start=1):
+            add_generic_finding(
+                finding_id=f"VAL-RESEARCH-EVIDENCE-ERROR-{idx:03d}",
+                severity="error",
+                layer="GLOBAL",
+                file=research_evidence_file,
+                section="Research Evidence",
+                message=err,
+                why_blocking="Research evidence quality requirements are not satisfied.",
+                fix_hint="Fix evidence schema and claim/source traceability.",
+                fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+            )
             research_status = "ERROR"
-        else:
-            warnings_total += 1
-            research_status = "WARN"
+        for idx, warn in enumerate(research_warnings, start=1):
+            add_generic_finding(
+                finding_id=f"VAL-RESEARCH-EVIDENCE-WARN-{idx:03d}",
+                severity="warning",
+                layer="GLOBAL",
+                file=research_evidence_file,
+                section="Research Evidence",
+                message=warn,
+                why_blocking="Research evidence may be incomplete or low confidence.",
+                fix_hint="Tighten evidence quality and include missing details.",
+                fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+            )
+            if research_status == "OK":
+                research_status = "WARN"
+
     results["research"] = {
         "status": research_status,
         "required": research_required,
         "approved": research_approved,
         "file": research_file.name if research_file else None,
+        "evidence_file": research_evidence_file.name if research_evidence_file.exists() else None,
         "messages": research_messages,
     }
 
+    warnings_total = len([f for f in findings_all if f.get("severity") == "warning"])
+    errors_total = len([f for f in findings_all if f.get("severity") == "error"])
     ready = errors_total == 0 and (warnings_total == 0 or not args.strict)
+    blocking = blocking_findings(findings_all, strict=args.strict)
     summary = {
         "overall": "PASS" if ready else "FAIL",
         "mode": "strict" if args.strict else "soft",
@@ -340,6 +612,9 @@ def main() -> int:
         "warnings": warnings_total,
         "errors": errors_total,
         "ready_for_execution": ready,
+        "findings": findings_all,
+        "blocking_findings": blocking,
+        "next_fix_command": next_fix_command(findings_all, strict=args.strict),
         "layers": {k: v for k, v in results.items() if k in layers},
         "gates": results.get("gates", {}),
         "constraints": results["constraints"],
@@ -359,7 +634,10 @@ def main() -> int:
         print(f"- Errors: {errors_total}")
         for layer in layers:
             entry = summary["layers"].get(layer, {})
-            print(f"  {layer}: {entry.get('status')} (warnings: {entry.get('warnings')})")
+            print(
+                f"  {layer}: {entry.get('status')} "
+                f"(warnings: {entry.get('warnings', 0)}, errors: {entry.get('errors', 0)})"
+            )
         if summary.get("gates"):
             print(f"- Gates: {summary['gates'].get('status')}")
             for err in summary["gates"].get("errors", []):
@@ -383,9 +661,22 @@ def main() -> int:
             if summary["research"].get("status") in {"WARN", "ERROR"}:
                 for msg in summary["research"].get("messages", []):
                     print(f"  {msg}")
-        if args.strict and warnings_total > 0:
+        if summary.get("blocking_findings"):
+            print("- Blocking Findings:")
+            for finding in summary["blocking_findings"]:
+                line = finding.get("line")
+                loc = f"{finding.get('file')}:{line}" if line else finding.get("file")
+                print(
+                    "  "
+                    f"[{finding.get('id')}] {finding.get('severity').upper()} "
+                    f"{finding.get('message')} | source={loc} | "
+                    f"section={finding.get('section')} | fix={finding.get('fix_command')}"
+                )
+        if summary.get("next_fix_command"):
+            print(f"- Next Fix Command: {summary['next_fix_command']}")
+        if args.strict and (warnings_total > 0 or errors_total > 0):
             print("✗ STRICT MODE: WARNINGS ARE BLOCKING. FIX BEFORE PROCEEDING.")
-            print("FAIL: Validation produced warnings under strict mode.")
+            print("FAIL: Validation produced blocking findings under strict mode.")
         elif args.strict:
             print("PASS: Validation clean under strict mode.")
         elif warnings_total > 0:

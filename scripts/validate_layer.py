@@ -10,6 +10,7 @@ import re
 import os
 import argparse
 from pathlib import Path
+from typing import Dict, List, Optional
 
 try:
     import yaml
@@ -19,6 +20,7 @@ except ImportError:
 from log_utils import init_logger
 from path_utils import resolve_plan_dir
 import validate_dependencies
+from findings import make_finding, split_by_severity
 
 LAYER_REQUIREMENTS = {
     "L0": {
@@ -218,6 +220,49 @@ def extract_section_content(content: str, section_name: str) -> str:
     return "\n".join(lines).strip()
 
 
+def find_section_line(content: str, section_name: str) -> Optional[int]:
+    variants = section_variants(section_name)
+    header_pattern = re.compile(r"^#{2,4}\s+(.+)$")
+    for idx, line in enumerate(content.splitlines(), start=1):
+        match = header_pattern.match(line.strip())
+        if not match:
+            continue
+        title = match.group(1).strip()
+        if normalize_header(title) in variants:
+            return idx
+    return None
+
+
+def add_finding(
+    findings: List[Dict],
+    *,
+    finding_id: str,
+    severity: str,
+    layer: str,
+    file_path: Path,
+    section: str,
+    message: str,
+    why_blocking: str,
+    fix_hint: str,
+    fix_command: str,
+    line: Optional[int] = None,
+) -> None:
+    findings.append(
+        make_finding(
+            finding_id=finding_id,
+            severity=severity,
+            layer=layer,
+            file=str(file_path),
+            section=section,
+            line=line,
+            message=message,
+            why_blocking=why_blocking,
+            fix_hint=fix_hint,
+            fix_command=fix_command,
+        )
+    )
+
+
 def count_constraints(content):
     """Count constraints in L1 content."""
     ids = re.findall(r"\bCON-\d{3,}\b", content, re.IGNORECASE)
@@ -263,8 +308,8 @@ def check_previous_layer_complete(arch_dir, current_layer):
 
 
 def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
-    """Validate a specific layer and return list of issues."""
-    warnings = []
+    """Validate a specific layer and return list of structured findings."""
+    findings: List[Dict] = []
 
     if layer not in LAYER_REQUIREMENTS:
         print(f"✗ ERROR: Unknown layer '{layer}'")
@@ -295,42 +340,115 @@ def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
         if prev_complete:
             print("✓ Previous layer complete")
         else:
-            print("⚠ WARNING: Previous layer not found (validation may be incomplete)")
-            warnings.append("Previous layer incomplete")
+            message = "Previous layer not found (validation may be incomplete)"
+            print(f"⚠ WARNING: {message}")
+            add_finding(
+                findings,
+                finding_id=f"VAL-{layer}-PREVIOUS-LAYER",
+                severity="warning",
+                layer=layer,
+                file_path=file_path,
+                section="Layer Sequence",
+                message=message,
+                why_blocking="Layer progression may be inconsistent without parent layer context.",
+                fix_hint=f"Complete the previous layer before continuing with {layer}.",
+                fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+            )
 
     requirements = LAYER_REQUIREMENTS[layer]
+    sections_found = {}
+    content = file_path.read_text(encoding="utf-8")
     if requirements.get("yaml_required"):
         if yaml is None:
             print("✗ ERROR: PyYAML required for YAML validation")
             print("  Install with: pip install pyyaml")
             return None
 
-        content = file_path.read_text(encoding="utf-8")
         yaml_match = re.search(r"```yaml\s*(.*?)```", content, re.DOTALL)
         if not yaml_match:
-            print("⚠ WARNING: YAML block not found")
-            warnings.append("YAML block not found")
+            message = "YAML block not found"
+            print(f"⚠ WARNING: {message}")
+            add_finding(
+                findings,
+                finding_id=f"VAL-{layer}-YAML-MISSING",
+                severity="warning",
+                layer=layer,
+                file_path=file_path,
+                section="YAML Block",
+                message=message,
+                why_blocking="Required readiness metadata cannot be validated.",
+                fix_hint="Add a ```yaml ...``` block with required keys.",
+                fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+            )
         else:
             try:
                 data = yaml.safe_load(yaml_match.group(1))
                 if not isinstance(data, dict):
-                    print("⚠ WARNING: YAML block did not parse as an object")
-                    warnings.append("YAML block invalid")
+                    message = "YAML block did not parse as an object"
+                    print(f"⚠ WARNING: {message}")
+                    add_finding(
+                        findings,
+                        finding_id=f"VAL-{layer}-YAML-INVALID",
+                        severity="warning",
+                        layer=layer,
+                        file_path=file_path,
+                        section="YAML Block",
+                        message=message,
+                        why_blocking="Required readiness metadata cannot be validated.",
+                        fix_hint="Fix YAML syntax so it parses to a mapping object.",
+                        fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+                    )
                 else:
                     if data.get("layer") != layer:
-                        print(
-                            f"⚠ WARNING: YAML layer '{data.get('layer')}' does not match {layer}"
+                        message = (
+                            f"YAML layer '{data.get('layer')}' does not match {layer}"
                         )
-                        warnings.append("YAML layer mismatch")
+                        print(f"⚠ WARNING: {message}")
+                        add_finding(
+                            findings,
+                            finding_id=f"VAL-{layer}-YAML-LAYER-MISMATCH",
+                            severity="warning",
+                            layer=layer,
+                            file_path=file_path,
+                            section="YAML Block",
+                            message=message,
+                            why_blocking="Layer metadata is inconsistent with the file being validated.",
+                            fix_hint=f"Set YAML field 'layer: {layer}'.",
+                            fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+                        )
                     for key in requirements.get("yaml_required_keys", []):
                         if key not in data:
-                            print(f"⚠ WARNING: Missing YAML field: {key}")
-                            warnings.append(f"Missing YAML field: {key}")
+                            message = f"Missing YAML field: {key}"
+                            print(f"⚠ WARNING: {message}")
+                            add_finding(
+                                findings,
+                                finding_id=f"VAL-{layer}-YAML-FIELD-{normalize_header(key).replace(' ', '-').upper()}",
+                                severity="warning",
+                                layer=layer,
+                                file_path=file_path,
+                                section="YAML Block",
+                                message=message,
+                                why_blocking="Required operational metadata is incomplete.",
+                                fix_hint=f"Add '{key}' to the YAML block.",
+                                fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+                            )
             except Exception as e:
-                print(f"⚠ WARNING: YAML parse error: {e}")
-                warnings.append("YAML parse error")
+                message = f"YAML parse error: {e}"
+                print(f"⚠ WARNING: {message}")
+                add_finding(
+                    findings,
+                    finding_id=f"VAL-{layer}-YAML-PARSE-ERROR",
+                    severity="warning",
+                    layer=layer,
+                    file_path=file_path,
+                    section="YAML Block",
+                    message=message,
+                    why_blocking="Required readiness metadata cannot be reliably parsed.",
+                    fix_hint="Fix YAML syntax in the fenced yaml block.",
+                    fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+                )
     else:
-        sections_found, content = parse_sections(file_path)
+        sections_found, _ = parse_sections(file_path)
         normalized_found = {normalize_header(s) for s in sections_found.keys()}
         optional_sections = set(requirements.get("optional_sections", []))
         for section in requirements["sections"]:
@@ -343,24 +461,60 @@ def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
                 if section in optional_sections:
                     print(f"ℹ INFO: Optional {section} section not found")
                     continue
-                print(f"⚠ WARNING: {section} section not found")
-                warnings.append(f"Missing {section} section")
+                message = f"{section} section not found"
+                print(f"⚠ WARNING: {message}")
+                add_finding(
+                    findings,
+                    finding_id=f"VAL-{layer}-MISSING-SECTION-{normalize_header(section).replace(' ', '-').upper()}",
+                    severity="warning",
+                    layer=layer,
+                    file_path=file_path,
+                    section=section,
+                    message=message,
+                    why_blocking="Layer contract is incomplete and downstream mapping may be invalid.",
+                    fix_hint=f"Add a '## {section}' section (aliases allowed) with substantive content.",
+                    fix_command=f"python scripts/arch.py validate --layer {layer} --path {arch_dir}",
+                    line=find_section_line(content, section),
+                )
 
     if layer == "L1":
         constraint_count = count_constraints(content)
         min_req = requirements.get("min_constraints", 3)
         max_req = requirements.get("max_constraints", 7)
+        constraints_line = find_section_line(content, "Constraints")
 
         if constraint_count < min_req:
-            print(
-                f"⚠ WARNING: Only {constraint_count} constraints found (recommend {min_req}-{max_req})"
+            message = f"Only {constraint_count} constraints found (recommend {min_req}-{max_req})"
+            print(f"⚠ WARNING: {message}")
+            add_finding(
+                findings,
+                finding_id="VAL-L1-CONSTRAINT-COUNT",
+                severity="warning",
+                layer=layer,
+                file_path=file_path,
+                section="Constraints",
+                line=constraints_line,
+                message=message,
+                why_blocking="Too few constraints weakens traceability and validation rigor.",
+                fix_hint=f"Add measurable constraints until count is within {min_req}-{max_req}.",
+                fix_command=f"python scripts/arch.py constraints extract --path {file_path} --out {arch_dir / 'constraints.yml'}",
             )
-            warnings.append(f"Too few constraints ({constraint_count})")
         elif constraint_count > max_req:
-            print(
-                f"⚠ WARNING: {constraint_count} constraints found (recommend {min_req}-{max_req})"
+            message = f"{constraint_count} constraints found (recommend {min_req}-{max_req})"
+            print(f"⚠ WARNING: {message}")
+            add_finding(
+                findings,
+                finding_id="VAL-L1-CONSTRAINT-COUNT",
+                severity="warning",
+                layer=layer,
+                file_path=file_path,
+                section="Constraints",
+                line=constraints_line,
+                message=message,
+                why_blocking="Overly broad constraint sets create noisy gates and unclear priorities.",
+                fix_hint=f"Consolidate/reprioritize constraints to remain within {min_req}-{max_req} guidance.",
+                fix_command=f"python scripts/arch.py validate --layer L1 --path {arch_dir}",
             )
-            warnings.append(f"Too many constraints ({constraint_count})")
         else:
             print(f"✓ Constraint count in recommended range ({constraint_count})")
 
@@ -369,21 +523,52 @@ def validate_layer(arch_dir, layer, optional_missing_ok: bool = False):
         dep_warnings, dep_errors = validate_dependencies.validate_dependencies(arch_dir)
         if dep_errors:
             print("✗ ERROR: Dependency graph validation failed:")
-            for err in dep_errors:
+            for idx, err in enumerate(dep_errors, start=1):
                 print(f"  - {err}")
-            return None
-        for warn in dep_warnings:
+                add_finding(
+                    findings,
+                    finding_id=f"VAL-{layer}-DEPENDENCY-ERROR-{idx:03d}",
+                    severity="error",
+                    layer=layer,
+                    file_path=arch_dir / "dependencies.yml",
+                    section="Dependency Graph",
+                    message=err,
+                    why_blocking="Dependency graph errors invalidate module/file dependency checks.",
+                    fix_hint="Fix dependency graph schema or graph consistency errors.",
+                    fix_command=f"python scripts/arch.py deps --path {arch_dir} --strict",
+                )
+        for idx, warn in enumerate(dep_warnings, start=1):
             print(f"⚠ WARNING: {warn}")
-            warnings.append(warn)
+            add_finding(
+                findings,
+                finding_id=f"VAL-{layer}-DEPENDENCY-WARN-{idx:03d}",
+                severity="warning",
+                layer=layer,
+                file_path=arch_dir / "dependencies.yml",
+                section="Dependency Graph",
+                message=warn,
+                why_blocking="Dependency graph drift reduces cross-layer reliability.",
+                fix_hint="Align dependencies.yml nodes/edges with L3 modules and L4 implementation paths.",
+                fix_command=f"python scripts/arch.py deps --path {arch_dir}",
+            )
 
     print()
 
-    if warnings:
-        print(f"✓ Validation complete - {len(warnings)} warning(s)")
+    summary = split_by_severity(findings)
+    if summary["warnings"] or summary["errors"]:
+        print(
+            "✓ Validation complete - "
+            f"{len(summary['errors'])} error(s), {len(summary['warnings'])} warning(s)"
+        )
+        for finding in summary["errors"] + summary["warnings"]:
+            loc = f"{finding['file']}:{finding['line']}" if finding.get("line") else finding["file"]
+            print(
+                f"  - [{finding['id']}] {finding['message']} | source={loc} | section={finding['section']} | fix={finding['fix_command']}"
+            )
     else:
         print("✓ Validation complete - no issues found")
 
-    return warnings
+    return findings
 
 
 def main():
@@ -481,7 +666,7 @@ def main():
         # If only a path was provided, default to all layers.
         layers = ["L0", "L1", "L2", "L3", "L4", "L5"]
 
-    all_warnings = []
+    all_findings: List[Dict] = []
     for current_layer in layers:
         optional_missing_ok = current_layer in {"L0", "L5"} and (args.all or layer is None)
         result = validate_layer(arch_dir, current_layer, optional_missing_ok=optional_missing_ok)
@@ -493,21 +678,32 @@ def main():
                 {"layer": current_layer},
             )
             sys.exit(3)
-        all_warnings.extend(result)
+        all_findings.extend(result)
+
+    warning_count = len([f for f in all_findings if f.get("severity") == "warning"])
+    error_count = len([f for f in all_findings if f.get("severity") == "error"])
 
     logger.log(
         "info",
         "validation_complete",
         "Layer validation complete",
-        {"layers": layers, "warnings": len(all_warnings)},
+        {
+            "layers": layers,
+            "warnings": warning_count,
+            "errors": error_count,
+            "findings": all_findings,
+        },
     )
-    if strict and all_warnings:
+    if strict and (warning_count > 0 or error_count > 0):
         print("✗ STRICT MODE: WARNINGS ARE BLOCKING. FIX BEFORE PROCEEDING.")
         print("FAIL: Validation produced warnings under strict mode.")
         sys.exit(1)
+    if error_count > 0:
+        print("FAIL: Validation produced errors.")
+        sys.exit(1)
     if strict:
         print("PASS: Validation clean under strict mode.")
-    elif all_warnings:
+    elif warning_count > 0:
         print("SOFT MODE: Warnings present. Proceed only with explicit user approval.")
     sys.exit(0)
 

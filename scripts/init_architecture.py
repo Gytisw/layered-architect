@@ -25,8 +25,40 @@ def create_directory_structure(project_root: str | Path) -> Path:
     return plan_dir
 
 
-def create_l1_meta_architecture(plan_dir: Path):
-    content = """# Meta-Architecture
+def create_l1_meta_architecture(plan_dir: Path, profile: str = "blank"):
+    if profile == "agent-ai":
+        content = """# Meta-Architecture
+
+## Vision
+Build an agent workflow architecture that is measurable, testable, and easy to evolve with clear operational boundaries.
+
+## Constraints
+- [ ] CON-001: p95 API latency target is defined and measurable.
+- [ ] CON-002: Throughput target is defined for expected peak load.
+- [ ] CON-003: Data handling and retention requirements are explicit.
+
+## Principles
+1. Decisions must be traceable to explicit constraints.
+2. Architecture should optimize for observability and operability.
+3. External dependencies require fresh research evidence.
+
+## Success Criteria
+- Architecture passes strict validation with zero warnings.
+- Constraints are traceable from L1 through L4.
+
+## Decision Log
+1. **Decision**: Start with a layered architecture workflow.
+   - **Rationale**: Reduces architectural drift and undocumented assumptions.
+   - **Impact**: All downstream layers must preserve traceability.
+
+## Risk Register
+1. **Risk**: Scope ambiguity causes unstable architecture decisions.
+   - **Severity**: High
+   - **Mitigation**: Trigger L0 when ambiguity markers are present.
+   - **Owner**: Architecture lead
+"""
+    else:
+        content = """# Meta-Architecture
 
 ## Vision
 [Describe the system's purpose in 1-2 sentences]
@@ -57,8 +89,46 @@ def create_l1_meta_architecture(plan_dir: Path):
     (plan_dir / "L1-meta-architecture.md").write_text(content)
 
 
-def create_l2_system_architecture(plan_dir: Path):
-    content = """# System Architecture
+def create_l2_system_architecture(plan_dir: Path, profile: str = "blank"):
+    if profile == "agent-ai":
+        content = """# System Architecture
+
+## Overview
+Define subsystems, boundaries, and interfaces with explicit mapping to L1 constraints.
+
+## Subsystems
+- **Ingestion**: Receives and validates events.
+- **Storage**: Persists events and metadata.
+- **Query**: Serves analytical and operational queries.
+
+## Boundaries
+Define ownership boundaries and what each subsystem explicitly does not own.
+
+## Data Flow
+Describe write path and read path separately.
+
+## Interfaces
+List API contracts, auth model, and SLA expectations.
+
+## External Dependencies
+- [Dependency]: [Purpose, version, and research evidence reference]
+
+## Migration Strategy
+[If legacy systems exist, outline migration approach]
+
+## Tradeoff Matrix
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| A | | | |
+| B | | | |
+
+## Decision Log
+1. **Decision**: Keep write and read paths explicit.
+   - **Rationale**: Prevent hidden coupling and performance regressions.
+   - **Impact**: L3 must mirror boundary ownership.
+"""
+    else:
+        content = """# System Architecture
 
 ## Overview
 [High-level description of the system]
@@ -97,8 +167,57 @@ def create_l2_system_architecture(plan_dir: Path):
     (plan_dir / "L2-system-architecture.md").write_text(content)
 
 
-def create_l3_component_design(plan_dir: Path):
-    content = """# Component Design
+def create_l3_component_design(plan_dir: Path, profile: str = "blank"):
+    if profile == "agent-ai":
+        content = """# Component Design
+
+## Modules
+
+### Ingestion Module
+
+#### Responsibilities
+- Validate and normalize incoming events
+- Enforce auth and rate-limit policies
+
+#### Public Interface
+```python
+class IngestionModule:
+    def method_name(self, param: Type) -> ReturnType:
+        \"\"\"Interface contract with explicit error behavior.\"\"\"
+        pass
+```
+
+#### Internal Structure
+[Describe internal classes and failure handling strategy]
+
+### Query Module
+
+#### Responsibilities
+- Translate request-level queries to storage contracts
+- Return bounded and measurable responses
+
+#### Public Interface
+```python
+class QueryModule:
+    def method_name(self, param: Type) -> ReturnType:
+        \"\"\"Interface contract with strict validation guarantees.\"\"\"
+        pass
+```
+
+## API Contracts
+- [Endpoint or method signature + error conditions]
+
+## Dependencies
+- Component A depends on [Component B]
+- Canonical graph lives in `.plan/dependencies.yml`
+
+## Decision Log
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
+"""
+    else:
+        content = """# Component Design
 
 ## Modules
 
@@ -148,8 +267,54 @@ class ComponentB:
     (plan_dir / "L3-component-design.md").write_text(content)
 
 
-def create_l4_implementation(plan_dir: Path):
-    content = """# Implementation
+def create_l4_implementation(plan_dir: Path, profile: str = "blank"):
+    if profile == "agent-ai":
+        content = """# Implementation
+
+## File Structure
+```
+project/
+├── .plan/
+├── services/
+│   ├── ingestion/
+│   ├── storage/
+│   └── query/
+├── sdk/
+└── tests/
+```
+
+## Code Patterns
+- Explicit boundary ownership per subsystem
+- Deterministic validation gates before progression
+
+## Implementation Details
+- Include reliability and failure-mode handling for each module
+
+## Validation Commands
+```bash
+python scripts/arch.py status --path .plan
+python scripts/arch.py validate --path .plan --strict
+```
+
+## Implementation Order
+1. [ ] [First task to implement]
+2. [ ] [Second task to implement]
+3. [ ] [Third task to implement]
+
+## Testing Strategy
+- Unit tests: [Coverage target and approach]
+- Integration tests: [Approach and scope]
+
+## Build & Deployment
+[Instructions for building and deploying]
+
+## Decision Log
+1. **Decision**: [Short statement]
+   - **Rationale**: [Why]
+   - **Impact**: [What it affects downstream]
+"""
+    else:
+        content = """# Implementation
 
 ## File Structure
 ```
@@ -219,10 +384,17 @@ l0_required: false
 l5_required: false
 research_required: false
 research_approved: false
+research_approval_receipt: null
+research_approved_by: null
+research_approved_at: null
 semantic_required: true
 semantic_completed: false
+semantic_completion_receipt: null
+semantic_completed_by: null
+semantic_completed_at: null
 dependencies_complete: false
 constraints_registry_present: false
+last_validation_report: null
 last_step: init
 """
     (plan_dir / "gates.yml").write_text(content)
@@ -268,6 +440,12 @@ def main():
         action="store_true",
         help="Initialize .plan in the current directory.",
     )
+    parser.add_argument(
+        "--profile",
+        default="agent-ai",
+        choices=["agent-ai", "blank"],
+        help="Template profile to seed architecture files.",
+    )
     args = parser.parse_args()
 
     if args.here and args.path:
@@ -295,10 +473,11 @@ def main():
 
     try:
         plan_dir = create_directory_structure(project_root)
-        create_l1_meta_architecture(plan_dir)
-        create_l2_system_architecture(plan_dir)
-        create_l3_component_design(plan_dir)
-        create_l4_implementation(plan_dir)
+        profile = args.profile
+        create_l1_meta_architecture(plan_dir, profile=profile)
+        create_l2_system_architecture(plan_dir, profile=profile)
+        create_l3_component_design(plan_dir, profile=profile)
+        create_l4_implementation(plan_dir, profile=profile)
         create_constraints_yml(plan_dir)
         create_checkpoint_yml(plan_dir)
         create_gates_yml(plan_dir)

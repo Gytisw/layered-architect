@@ -13,6 +13,7 @@ Test Classes:
 """
 
 import os
+import json
 import re
 import sys
 import yaml
@@ -21,6 +22,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 from io import StringIO
 
 # Add scripts directory to path
@@ -45,6 +47,7 @@ import validate_dependencies
 import import_plan
 import arch
 import validate_semantic_report
+import validate_research_evidence
 from check_constraints import ConstraintChecker, Constraint, Component
 
 
@@ -509,8 +512,8 @@ Test
         l1_file = self.arch_dir / "L1-meta-architecture.md"
         l1_file.write_text(content)
 
-        warnings = validate_layer.validate_layer(self.arch_dir, "L1")
-        self.assertTrue(any("Decision Log" in w for w in warnings))
+        findings = validate_layer.validate_layer(self.arch_dir, "L1")
+        self.assertTrue(any("Decision Log" in f.get("message", "") for f in findings))
 
     def test_validate_layer_l2_missing_tradeoff_matrix(self):
         """Test L2 validation warns when Tradeoff Matrix missing."""
@@ -534,8 +537,8 @@ Client -> API Gateway
         l2_file = self.arch_dir / "L2-system-architecture.md"
         l2_file.write_text(content)
 
-        warnings = validate_layer.validate_layer(self.arch_dir, "L2")
-        self.assertTrue(any("Tradeoff Matrix" in w for w in warnings))
+        findings = validate_layer.validate_layer(self.arch_dir, "L2")
+        self.assertTrue(any("Tradeoff Matrix" in f.get("message", "") for f in findings))
 
     def test_validate_layer_l2_alias_headers(self):
         """Test L2 validation accepts common header aliases."""
@@ -567,14 +570,14 @@ Phased migration
         l2_file = self.arch_dir / "L2-system-architecture.md"
         l2_file.write_text(content)
 
-        warnings = validate_layer.validate_layer(self.arch_dir, "L2")
-        self.assertFalse(any("Missing Subsystems section" in w for w in warnings))
-        self.assertFalse(any("Missing Boundaries section" in w for w in warnings))
-        self.assertFalse(any("Missing Data Flow section" in w for w in warnings))
-        self.assertFalse(any("Missing Interfaces section" in w for w in warnings))
-        self.assertFalse(any("Missing Migration Strategy section" in w for w in warnings))
-        self.assertFalse(any("Missing Tradeoff Matrix section" in w for w in warnings))
-        self.assertFalse(any("Missing Decision Log section" in w for w in warnings))
+        findings = validate_layer.validate_layer(self.arch_dir, "L2")
+        self.assertFalse(any("Missing Subsystems section" in f.get("message", "") for f in findings))
+        self.assertFalse(any("Missing Boundaries section" in f.get("message", "") for f in findings))
+        self.assertFalse(any("Missing Data Flow section" in f.get("message", "") for f in findings))
+        self.assertFalse(any("Missing Interfaces section" in f.get("message", "") for f in findings))
+        self.assertFalse(any("Missing Migration Strategy section" in f.get("message", "") for f in findings))
+        self.assertFalse(any("Missing Tradeoff Matrix section" in f.get("message", "") for f in findings))
+        self.assertFalse(any("Missing Decision Log section" in f.get("message", "") for f in findings))
 
     def test_validate_layer_optional_missing_ok(self):
         """Test optional layer missing does not error when allowed."""
@@ -602,9 +605,9 @@ residual_risks: []
         l5_file = self.arch_dir / "L5-operability-readiness.md"
         l5_file.write_text(content)
 
-        warnings = validate_layer.validate_layer(self.arch_dir, "L5")
-        self.assertTrue(any("Missing YAML field: decision_log" in w for w in warnings))
-        self.assertTrue(any("Missing YAML field: risk_register" in w for w in warnings))
+        findings = validate_layer.validate_layer(self.arch_dir, "L5")
+        self.assertTrue(any("Missing YAML field: decision_log" in f.get("message", "") for f in findings))
+        self.assertTrue(any("Missing YAML field: risk_register" in f.get("message", "") for f in findings))
 
     def test_validate_layer_unknown_layer(self):
         """Test validation of unknown layer."""
@@ -1710,10 +1713,17 @@ Deploy
             "l5_required": False,
             "research_required": False,
             "research_approved": include_research,
+            "research_approval_receipt": "research-test" if include_research else None,
+            "research_approved_by": "tester" if include_research else None,
+            "research_approved_at": "2026-02-11T10:00:00Z" if include_research else None,
             "semantic_required": True,
             "semantic_completed": include_semantic,
+            "semantic_completion_receipt": "semantic-test" if include_semantic else None,
+            "semantic_completed_by": "tester" if include_semantic else None,
+            "semantic_completed_at": "2026-02-11T10:00:00Z" if include_semantic else None,
             "dependencies_complete": True,
             "constraints_registry_present": True,
+            "last_validation_report": ".plan/last-validation.json",
             "last_step": "init",
         }
         if gates_overrides:
@@ -1722,9 +1732,40 @@ Deploy
 
         if include_research:
             (plan_dir / "research.md").write_text("# Research\n\n- source: test\n")
+            (plan_dir / "research.evidence.json").write_text(
+                json.dumps(
+                    {
+                        "version": "1.0.0",
+                        "generated_at": "2026-02-11T10:00:00Z",
+                        "research_scope": "Dependency selection",
+                        "executor": {"mode": "manual_user_input", "task_ids": []},
+                        "sources": [
+                            {
+                                "id": "SRC-001",
+                                "title": "Example",
+                                "url": "https://example.com",
+                                "retrieved_at": "2026-02-11T09:00:00Z",
+                            }
+                        ],
+                        "claims": [
+                            {
+                                "id": "CLM-001",
+                                "text": "Example claim",
+                                "source_ids": ["SRC-001"],
+                                "decision_impacts": ["DEC-001"],
+                            }
+                        ],
+                    }
+                )
+            )
         if include_semantic:
             (plan_dir / "semantic-validation.md").write_text(
-                "# Semantic Validation Report\n\n## Shard A\n- status: PASS\n\n## Shard B\n- status: PASS\n\n## Shard C\n- status: PASS\n\n## Shard D\n- status: PASS\n\n## Shard E\n- status: PASS\n"
+                "# Semantic Validation Report\n\n"
+                "## Shard A (L1↔L2)\nstatus: PASS\nexecutor: subagent-a\nevidence_ref: L1:Constraints\nfinding_id: NONE\n\n"
+                "## Shard B (L2↔L3)\nstatus: PASS\nexecutor: subagent-b\nevidence_ref: L2:Interfaces\nfinding_id: NONE\n\n"
+                "## Shard C (L3↔L4)\nstatus: PASS\nexecutor: subagent-c\nevidence_ref: L3:Modules\nfinding_id: NONE\n\n"
+                "## Shard D (Constraints)\nstatus: PASS\nexecutor: subagent-d\nevidence_ref: constraints.yml\nfinding_id: NONE\n\n"
+                "## Shard E (Dependencies)\nstatus: PASS\nexecutor: subagent-e\nevidence_ref: dependencies.yml\nfinding_id: NONE\n"
             )
 
     def test_validate_all_json_output(self):
@@ -1794,6 +1835,52 @@ Deploy
         self.assertNotEqual(exit_code, 0)
         self.assertIn("gates.yml", output)
 
+    def test_validate_all_json_has_blocking_findings_schema(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        self.write_minimal_plan(plan_dir, include_research=False, include_semantic=False)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["validate_all.py", "--path", str(plan_dir), "--strict", "--format", "json"],
+        ):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                exit_code = validate_all.main()
+                output = mock_stdout.getvalue()
+        data = json.loads(output)
+        self.assertNotEqual(exit_code, 0)
+        self.assertIn("blocking_findings", data)
+        self.assertIsInstance(data["blocking_findings"], list)
+        if data["blocking_findings"]:
+            finding = data["blocking_findings"][0]
+            self.assertIn("file", finding)
+            self.assertIn("section", finding)
+            self.assertIn("fix_command", finding)
+            self.assertIn("id", finding)
+
+    def test_validate_all_manual_gate_tamper_is_blocking(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        self.write_minimal_plan(plan_dir, include_research=True, include_semantic=True)
+
+        gates_path = plan_dir / "gates.yml"
+        gates = yaml.safe_load(gates_path.read_text())
+        gates["research_approval_receipt"] = None
+        gates_path.write_text(yaml.safe_dump(gates, sort_keys=False))
+
+        with patch.object(
+            sys, "argv", ["validate_all.py", "--path", str(plan_dir), "--strict", "--format", "json"]
+        ):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                exit_code = validate_all.main()
+                output = mock_stdout.getvalue()
+        data = json.loads(output)
+        self.assertNotEqual(exit_code, 0)
+        self.assertTrue(any("receipt" in f.get("id", "").lower() for f in data["blocking_findings"]))
+
 
 # =============================================================================
 # Test Class 12: Semantic Report Validation
@@ -1821,9 +1908,71 @@ class TestValidateSemanticReport(unittest.TestCase):
         self.assertFalse(errors)
         self.assertTrue(warnings)
 
+    def test_task_capable_requires_distinct_executors(self):
+        (self.plan_dir / "semantic-validation.md").write_text(
+            "# Semantic Validation Report\n\n"
+            "## Shard A\nstatus: PASS\nexecutor: same\n evidence_ref: a\nfinding_id: NONE\n\n"
+            "## Shard B\nstatus: PASS\nexecutor: same\n evidence_ref: b\nfinding_id: NONE\n\n"
+            "## Shard C\nstatus: PASS\nexecutor: same\n evidence_ref: c\nfinding_id: NONE\n\n"
+            "## Shard D\nstatus: PASS\nexecutor: same\n evidence_ref: d\nfinding_id: NONE\n\n"
+            "## Shard E\nstatus: PASS\nexecutor: same\n evidence_ref: e\nfinding_id: NONE\n"
+        )
+        warnings, errors = validate_semantic_report.validate_report(
+            self.plan_dir, task_capable=True
+        )
+        self.assertFalse(errors)
+        self.assertTrue(any("one executor per shard" in w.lower() for w in warnings))
+
 
 # =============================================================================
-# Test Class 13: Import Plan
+# Test Class 13: Research Evidence Validation
+# =============================================================================
+
+
+class TestValidateResearchEvidence(unittest.TestCase):
+    """Tests for validate_research_evidence.py script."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir)
+        self.plan_dir = Path(self.temp_dir) / ".plan"
+        self.plan_dir.mkdir()
+
+    def test_missing_evidence_file_errors(self):
+        warnings, errors = validate_research_evidence.validate_evidence_file(self.plan_dir)
+        self.assertFalse(warnings)
+        self.assertTrue(errors)
+
+    def test_invalid_claim_source_mapping_errors(self):
+        evidence = {
+            "version": "1.0.0",
+            "generated_at": "2026-02-11T10:00:00Z",
+            "research_scope": "deps",
+            "executor": {"mode": "subagent", "task_ids": ["t1"]},
+            "sources": [
+                {
+                    "id": "SRC-001",
+                    "url": "https://example.com",
+                    "retrieved_at": "2026-02-11T09:00:00Z",
+                }
+            ],
+            "claims": [
+                {
+                    "id": "CLM-001",
+                    "text": "Claim",
+                    "source_ids": ["SRC-404"],
+                    "decision_impacts": ["DEC-001"],
+                }
+            ],
+        }
+        path = self.plan_dir / "research.evidence.json"
+        path.write_text(json.dumps(evidence))
+        warnings, errors = validate_research_evidence.validate_evidence_file(self.plan_dir)
+        self.assertTrue(any("unknown source id" in e.lower() for e in errors))
+
+
+# =============================================================================
+# Test Class 14: Import Plan
 # =============================================================================
 
 
@@ -2140,6 +2289,46 @@ class TestArchCLI(unittest.TestCase):
         argv = mock_run.call_args[0][1]
         self.assertEqual(argv[0], "generate_diagrams.py")
         self.assertIn("--format", argv)
+
+    def test_semantic_validate_wrapper(self):
+        with patch.object(arch, "run_main", return_value=0) as mock_run:
+            with patch.object(
+                sys,
+                "argv",
+                ["arch.py", "semantic", "validate", "--path", ".plan", "--strict"],
+            ):
+                arch.main()
+        argv = mock_run.call_args[0][1]
+        self.assertEqual(argv[0], "validate_semantic_report.py")
+        self.assertIn("--strict", argv)
+
+    def test_research_validate_wrapper(self):
+        with patch.object(arch, "run_main", return_value=0) as mock_run:
+            with patch.object(
+                sys,
+                "argv",
+                ["arch.py", "research", "validate", "--path", ".plan", "--strict"],
+            ):
+                arch.main()
+        argv = mock_run.call_args[0][1]
+        self.assertEqual(argv[0], "validate_research_evidence.py")
+        self.assertIn("--strict", argv)
+
+    def test_next_prints_action_and_command(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        with patch.object(sys, "argv", ["init_architecture.py", "--path", temp_dir]):
+            with patch("sys.stdout", new=StringIO()):
+                try:
+                    init_architecture.main()
+                except SystemExit:
+                    pass
+
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            arch.cmd_next(SimpleNamespace(path=str(Path(temp_dir) / ".plan")))
+            output = mock_stdout.getvalue()
+        self.assertIn("REQUIRED ACTION:", output)
+        self.assertIn("COMMAND:", output)
 
 
 # =============================================================================
