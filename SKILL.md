@@ -8,6 +8,8 @@ description: Deterministic layered architecture workflow with strict gate enforc
 **STRICT MODE: DO NOT PROCEED WITH WARNINGS OR ERRORS.**  
 **FOLLOW THE STAGING SEQUENCE. DO NOT SKIP GATES.**  
 **DO NOT MANUALLY EDIT `.plan/gates.yml`.**
+**RUN `arch.py status` AFTER EVERY FILE WRITE/EDIT.**
+**IF `arch.py next` RETURNS A BLOCKER, FIX IT BEFORE ANY NEW LAYER DRAFTING.**
 
 Start here:
 - `references/ARCHITECTURE_WORKFLOW.md`
@@ -24,7 +26,7 @@ Do not run legacy scripts directly.
 ## Mandatory Execution Pattern
 
 1. `python scripts/arch.py doctor --path .`
-2. `python scripts/arch.py init --path .`
+2. `python scripts/arch.py init --path . --mode <strict|soft> --question-depth <minimal|thorough>`
 3. Draft layer content in order.
 4. After each file edit:
    - `python scripts/arch.py status --path .plan`
@@ -51,6 +53,9 @@ Required artifacts:
 - `.plan/research.md`
 - `.plan/research.evidence.json`
 
+Research evidence is invalid if it is memory-only prose.
+Evidence must map claims to concrete sources with retrieval timestamps and executor metadata.
+
 In strict mode, missing evidence blocks progression.
 If runtime cannot execute web/subagent research, request user-provided evidence and remain blocked until supplied.
 
@@ -71,6 +76,7 @@ Use canonical guide:
 
 Thorough mode must include technical-depth questions (stack, data model, operability, failure modes), not only product intent.
 Ambiguous user answers must trigger constrained follow-up questions.
+Do not silently pick stack/deployment defaults when user input is ambiguous; ask constrained follow-up options first.
 
 ## Completion Criteria
 

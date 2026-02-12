@@ -316,6 +316,19 @@ class TestInitArchitecture(unittest.TestCase):
         self.assertIsNone(content["current_layer"])
         self.assertIsNone(content["last_completed"])
 
+    def test_create_gates_yml_with_mode_and_question_depth(self):
+        """Test gates.yml accepts seeded mode/question depth."""
+        plan_dir = Path(self.temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+
+        init_architecture.create_gates_yml(plan_dir, mode="soft", question_depth="thorough")
+
+        gates_file = plan_dir / "gates.yml"
+        self.assertTrue(gates_file.exists())
+        content = yaml.safe_load(gates_file.read_text())
+        self.assertEqual(content["mode"], "soft")
+        self.assertEqual(content["question_depth"], "thorough")
+
     def test_create_dependencies_yml(self):
         """Test dependencies.yml file creation."""
         plan_dir = Path(self.temp_dir) / ".plan"
@@ -2258,6 +2271,30 @@ class TestMapArchitecture(unittest.TestCase):
 class TestArchCLI(unittest.TestCase):
     """Tests for arch.py wrapper commands."""
 
+    def test_init_wrapper_passes_mode_and_question_depth(self):
+        with patch.object(arch, "run_main", return_value=0) as mock_run:
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "arch.py",
+                    "init",
+                    "--path",
+                    ".",
+                    "--mode",
+                    "soft",
+                    "--question-depth",
+                    "thorough",
+                ],
+            ):
+                arch.main()
+        argv = mock_run.call_args[0][1]
+        self.assertEqual(argv[0], "init_architecture.py")
+        self.assertIn("--mode", argv)
+        self.assertIn("soft", argv)
+        self.assertIn("--question-depth", argv)
+        self.assertIn("thorough", argv)
+
     def test_constraints_extract_wrapper(self):
         with patch.object(arch, "run_main", return_value=0) as mock_run:
             with patch.object(
@@ -2329,6 +2366,21 @@ class TestArchCLI(unittest.TestCase):
             output = mock_stdout.getvalue()
         self.assertIn("REQUIRED ACTION:", output)
         self.assertIn("COMMAND:", output)
+
+    def test_external_dependencies_placeholder_does_not_trigger_research(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "L2-system-architecture.md").write_text(
+            """# System Architecture
+
+## External Dependencies
+- [Dependency 1]: [Purpose and version constraint]
+- [Dependency 2]: [Purpose and version constraint]
+"""
+        )
+        self.assertFalse(arch.has_external_deps_section(plan_dir))
 
 
 # =============================================================================

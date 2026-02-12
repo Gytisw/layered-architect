@@ -3,11 +3,16 @@
 Start here:
 - `ARCHITECTURE_WORKFLOW.md` — canonical staged workflow and gates
 - `QUESTION_WORKFLOW.md` — canonical adaptive question flow and ambiguity handling
+- `INDEX.md` — canonical map of which doc to use and when
 
 Canonical agent docs:
 - `ARCHITECTURE_WORKFLOW.md`
 - `QUESTION_WORKFLOW.md`
 - `INDEX.md`
+
+Operating rule:
+- Use `python scripts/arch.py ...` only.
+- Do not manually edit `.plan/gates.yml`.
 
 Supporting guides:
 - `layer-guide.md` — definitions of done per layer

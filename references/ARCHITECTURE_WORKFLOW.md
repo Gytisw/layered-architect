@@ -3,6 +3,8 @@
 **STRICT MODE: DO NOT PROCEED WITH WARNINGS OR ERRORS.**  
 **FOLLOW THE STAGING SEQUENCE. DO NOT SKIP GATES.**  
 **DO NOT MANUALLY EDIT `.plan/gates.yml`. USE `arch.py` GATE COMMANDS ONLY.**
+**AFTER EVERY FILE WRITE/EDIT: RUN `arch.py status` THEN `arch.py next`.**
+**DO NOT START THE NEXT LAYER UNTIL THE CURRENT BLOCKER IS RESOLVED.**
 
 This is the only accepted workflow for agents.
 
@@ -35,7 +37,7 @@ python scripts/arch.py doctor --path .
 
 2. Initialize (profile defaults to `agent-ai`)
 ```bash
-python scripts/arch.py init --path .
+python scripts/arch.py init --path . --mode <strict|soft> --question-depth <minimal|thorough>
 ```
 
 3. Draft layers in order (L0/L1/L2/L3/L4/L5 as required)
@@ -55,6 +57,8 @@ python scripts/arch.py validate --path .plan --strict
 - Create:
   - `.plan/research.md`
   - `.plan/research.evidence.json`
+- Evidence must include claim-to-source mapping, retrieval timestamps, and executor metadata.
+- Memory-only summaries are invalid evidence in strict mode.
 - Approve:
 ```bash
 python scripts/arch.py research approve --path .plan --approved-by <name> --confirm-user-approval
@@ -70,6 +74,7 @@ python scripts/arch.py deps --path .plan --strict
 python scripts/arch.py semantic validate --path .plan --strict
 python scripts/arch.py semantic complete --path .plan --completed-by <name>
 ```
+- If task/subagent fanout is available, semantic report must include one executor per required shard.
 
 9. Final validation + gate sync
 ```bash

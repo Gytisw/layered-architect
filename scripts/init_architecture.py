@@ -377,9 +377,9 @@ validation_status: {}
     (plan_dir / "checkpoint.yml").write_text(content)
 
 
-def create_gates_yml(plan_dir: Path):
-    content = """mode: strict
-question_depth: minimal
+def create_gates_yml(plan_dir: Path, mode: str = "strict", question_depth: str = "minimal"):
+    content = f"""mode: {mode}
+question_depth: {question_depth}
 l0_required: false
 l5_required: false
 research_required: false
@@ -446,6 +446,18 @@ def main():
         choices=["agent-ai", "blank"],
         help="Template profile to seed architecture files.",
     )
+    parser.add_argument(
+        "--mode",
+        default="strict",
+        choices=["strict", "soft"],
+        help="Validation mode to seed in gates.yml.",
+    )
+    parser.add_argument(
+        "--question-depth",
+        default="minimal",
+        choices=["minimal", "thorough"],
+        help="Question depth to seed in gates.yml.",
+    )
     args = parser.parse_args()
 
     if args.here and args.path:
@@ -480,7 +492,7 @@ def main():
         create_l4_implementation(plan_dir, profile=profile)
         create_constraints_yml(plan_dir)
         create_checkpoint_yml(plan_dir)
-        create_gates_yml(plan_dir)
+        create_gates_yml(plan_dir, mode=args.mode, question_depth=args.question_depth)
         create_dependencies_yml(plan_dir)
         create_support_dirs(plan_dir)
 

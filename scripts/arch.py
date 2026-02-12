@@ -251,12 +251,54 @@ def has_external_deps_section(plan_dir: Path) -> bool:
         "third party dependencies",
         "third-party dependencies",
     }
+    section_lines: List[str] = []
+    in_target = False
     for line in content.splitlines():
         match = header_pattern.match(line.strip())
         if match:
             title = match.group(1).strip().lower()
-            if title in targets:
-                return True
+            if in_target:
+                break
+            in_target = title in targets
+            continue
+        if in_target:
+            section_lines.append(line)
+    if not section_lines:
+        return False
+    generic_tokens = {
+        "dependency",
+        "dependencies",
+        "purpose",
+        "version",
+        "constraint",
+        "constraints",
+        "optional",
+        "required",
+        "legacy",
+        "n",
+        "a",
+    }
+    for raw in section_lines:
+        line = raw.strip()
+        if not line or line.startswith("```"):
+            continue
+        if line.startswith("|") and re.match(r"^\|\s*-+\s*\|", line):
+            continue
+        normalized = re.sub(r"^[-*]\s+|^\d+\.\s+|^\|\s*|\s*\|$", "", line)
+        normalized = re.sub(r"\*\*|`", "", normalized).strip()
+        lowered = normalized.lower()
+        if not lowered:
+            continue
+        if lowered in {"none", "n/a", "na", "tbd", "todo"}:
+            continue
+        if "[" in lowered and "]" in lowered:
+            continue
+        if lowered.startswith("if legacy"):
+            continue
+        tokens = [t for t in re.split(r"[^a-z0-9]+", lowered) if t]
+        meaningful = [t for t in tokens if t not in generic_tokens and len(t) > 2]
+        if meaningful:
+            return True
     return False
 
 
@@ -290,6 +332,18 @@ def dependency_status(plan_dir: Path) -> str:
     status = str(data.get("status", "draft")).strip().lower()
     return status or "draft"
 
+
+def constraints_registry_nonempty(plan_dir: Path) -> bool:
+    file_path = plan_dir / "constraints.yml"
+    if not file_path.exists() or yaml is None:
+        return False
+    try:
+        data = yaml.safe_load(file_path.read_text()) or {}
+    except Exception:
+        return False
+    constraints = data.get("constraints", [])
+    return isinstance(constraints, list) and len(constraints) > 0
+
 def cmd_init(args) -> int:
     argv = ["init_architecture.py"]
     if args.here:
@@ -300,6 +354,10 @@ def cmd_init(args) -> int:
         argv.append(args.project)
     if args.profile:
         argv.extend(["--profile", args.profile])
+    if args.mode:
+        argv.extend(["--mode", args.mode])
+    if args.question_depth:
+        argv.extend(["--question-depth", args.question_depth])
     return run_main(init_architecture.main, argv)
 
 
@@ -676,6 +734,10 @@ def cmd_status(args) -> int:
             print(f"  - {issue}")
     print(f"- Validation stamp fresh: {fmt(stamp_ok)}")
     print(f"  reason: {stamp_reason}")
+    action, command = next_required_action(plan_dir, gates, gate_errors)
+    print("- Next required action:")
+    print(f"  {action}")
+    print(f"  {command}")
     return 0
 
 
@@ -713,6 +775,16 @@ def next_required_action(plan_dir: Path, gates: Dict, gate_errors: List[str]) ->
         return (
             "Create constraints registry from L1.",
             "python scripts/arch.py constraints extract --path .plan/L1-meta-architecture.md --out .plan/constraints.yml",
+        )
+    if not stamp_ok and (
+        constraints_registry_nonempty(plan_dir)
+        or dependency_status(plan_dir) == "complete"
+        or bool(find_report(plan_dir, "research"))
+        or bool(find_report(plan_dir, "semantic-validation"))
+    ):
+        return (
+            "Validation is stale or missing after architecture edits. Re-validate before progressing.",
+            "python scripts/arch.py validate --path .plan --strict --format json > .plan/last-validation.json && python scripts/arch.py gate sync --path .plan --from .plan/last-validation.json",
         )
     if not receipts_ok:
         return (
@@ -951,6 +1023,18 @@ def main() -> int:
         default="agent-ai",
         choices=["agent-ai", "blank"],
         help="Template profile to seed architecture files.",
+    )
+    p_init.add_argument(
+        "--mode",
+        default="strict",
+        choices=["strict", "soft"],
+        help="Validation mode written to .plan/gates.yml.",
+    )
+    p_init.add_argument(
+        "--question-depth",
+        default="minimal",
+        choices=["minimal", "thorough"],
+        help="Question depth written to .plan/gates.yml.",
     )
     p_init.set_defaults(func=cmd_init)
 

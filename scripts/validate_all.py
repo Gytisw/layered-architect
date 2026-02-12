@@ -421,9 +421,53 @@ def main() -> int:
             normalize_header("Dependencies"),
             normalize_header("Third-Party Dependencies"),
         }
+        section_lines: List[str] = []
+        in_target = False
         for line in content.splitlines():
             match = header_pattern.match(line.strip())
-            if match and normalize_header(match.group(1)) in targets:
+            if match:
+                title = normalize_header(match.group(1))
+                if in_target:
+                    break
+                in_target = title in targets
+                continue
+            if in_target:
+                section_lines.append(line)
+        if not section_lines:
+            return False
+        generic_tokens = {
+            "dependency",
+            "dependencies",
+            "purpose",
+            "version",
+            "constraint",
+            "constraints",
+            "optional",
+            "required",
+            "legacy",
+            "n",
+            "a",
+        }
+        for raw in section_lines:
+            line = raw.strip()
+            if not line or line.startswith("```"):
+                continue
+            if line.startswith("|") and re.match(r"^\|\s*-+\s*\|", line):
+                continue
+            normalized = re.sub(r"^[-*]\s+|^\d+\.\s+|^\|\s*|\s*\|$", "", line)
+            normalized = re.sub(r"\*\*|`", "", normalized).strip()
+            lowered = normalized.lower()
+            if not lowered:
+                continue
+            if lowered in {"none", "n/a", "na", "tbd", "todo"}:
+                continue
+            if "[" in lowered and "]" in lowered:
+                continue
+            if lowered.startswith("if legacy"):
+                continue
+            tokens = [t for t in re.split(r"[^a-z0-9]+", lowered) if t]
+            meaningful = [t for t in tokens if t not in generic_tokens and len(t) > 2]
+            if meaningful:
                 return True
         return False
 

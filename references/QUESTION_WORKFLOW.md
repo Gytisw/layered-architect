@@ -11,10 +11,12 @@ Use it together with `references/ARCHITECTURE_WORKFLOW.md`.
 ## Non-Negotiable Rules
 
 - In **thorough** mode, do not stop at product-level questions; also cover stack, data model, failure modes, and operability.
+- In **thorough** mode, collect at least 8 answered fields before finalizing L1.
 - If user answers with ambiguity (`auto-generate`, `best suited`, `you choose`, `whatever`), ask constrained follow-up questions before drafting.
 - Do not proceed to next layer until the current layer has measurable inputs.
 - After any file edit, run:
   - `python scripts/arch.py status --path .plan`
+  - `python scripts/arch.py next --path .plan`
 
 ## Stage Question Coverage
 
@@ -76,6 +78,7 @@ If user says:
 - `auto-generate` -> ask concrete target metrics and constraints.
 - `best suited` -> present 2–4 explicit stack choices with tradeoffs.
 - `you choose` -> choose default only after showing options and getting approval.
+- `whatever` / vague response -> request bounded options and measurable targets; do not infer silently.
 
 ## Research Trigger Questions
 
@@ -86,3 +89,4 @@ When external dependencies are involved, ask:
   - `.plan/research.evidence.json`
 
 Never mark research approved without explicit user approval and evidence validation.
+Never claim research completion from model memory alone.
