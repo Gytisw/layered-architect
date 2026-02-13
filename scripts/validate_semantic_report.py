@@ -35,22 +35,24 @@ def _split_markdown_shards(content: str) -> dict[str, str]:
     return sections
 
 
-def _parse_json_shards(content: str) -> dict[str, dict]:
+def _parse_json_shards(content: str) -> tuple[dict[str, dict], str | None]:
     try:
         data = json.loads(content)
     except Exception:
-        return {}
+        return {}, "semantic-validation.json is not valid JSON"
     if not isinstance(data, dict):
-        return {}
+        return {}, "semantic-validation.json root must be an object"
     shards = data.get("shards", {})
+    if isinstance(shards, list):
+        return {}, "semantic-validation.json field 'shards' must be an object keyed by shard id (A..G), not an array"
     if not isinstance(shards, dict):
-        return {}
+        return {}, "semantic-validation.json missing object field 'shards'"
     parsed: dict[str, dict] = {}
     for key, value in shards.items():
         shard_key = str(key).strip().upper()
         if shard_key in {"A", "B", "C", "D", "E", "F", "G"} and isinstance(value, dict):
             parsed[shard_key] = value
-    return parsed
+    return parsed, None
 
 
 def validate_report(plan_dir: Path, task_capable: bool = False) -> tuple[list[str], list[str]]:
@@ -70,7 +72,12 @@ def validate_report(plan_dir: Path, task_capable: bool = False) -> tuple[list[st
         required.append("g")
 
     md_sections = _split_markdown_shards(content)
-    json_sections = _parse_json_shards(content) if report.suffix.lower() == ".json" else {}
+    json_sections: dict[str, dict] = {}
+    if report.suffix.lower() == ".json":
+        json_sections, parse_error = _parse_json_shards(content)
+        if parse_error:
+            errors.append(parse_error)
+            return warnings, errors
 
     missing: list[str] = []
     shard_executors: dict[str, str] = {}

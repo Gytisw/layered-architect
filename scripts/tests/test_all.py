@@ -1834,6 +1834,30 @@ Deploy
         self.assertNotEqual(exit_code, 0)
         self.assertIn("Research", output)
 
+    def test_validate_all_strict_short_circuits_on_research_gate(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        plan_dir = Path(temp_dir) / ".plan"
+        self.write_minimal_plan(
+            plan_dir,
+            include_research=False,
+            include_semantic=False,
+            gates_overrides={"research_approved": False},
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["validate_all.py", "--path", str(plan_dir), "--strict", "--format", "json"],
+        ):
+            with patch("sys.stdout", new=StringIO()) as mock_stdout:
+                exit_code = validate_all.main()
+                output = mock_stdout.getvalue()
+        data = json.loads(output)
+        self.assertNotEqual(exit_code, 0)
+        self.assertEqual(data.get("layers"), {})
+        self.assertIn("research approve", data.get("next_fix_command", ""))
+
     def test_validate_all_gates_schema_missing_keys(self):
         temp_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, temp_dir)
@@ -1935,6 +1959,23 @@ class TestValidateSemanticReport(unittest.TestCase):
         )
         self.assertFalse(errors)
         self.assertTrue(any("one executor per shard" in w.lower() for w in warnings))
+
+    def test_json_shards_array_errors_with_actionable_message(self):
+        (self.plan_dir / "semantic-validation.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0.0",
+                    "shards": [
+                        {"id": "A", "status": "pass"},
+                        {"id": "B", "status": "pass"},
+                    ],
+                }
+            )
+        )
+        warnings, errors = validate_semantic_report.validate_report(self.plan_dir)
+        self.assertFalse(warnings)
+        self.assertTrue(errors)
+        self.assertTrue(any("must be an object keyed by shard id" in e.lower() for e in errors))
 
 
 # =============================================================================
@@ -2381,6 +2422,80 @@ class TestArchCLI(unittest.TestCase):
 """
         )
         self.assertFalse(arch.has_external_deps_section(plan_dir))
+
+    def test_stage_enter_allows_next_required_layer(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        with patch.object(sys, "argv", ["init_architecture.py", "--path", temp_dir]):
+            with patch("sys.stdout", new=StringIO()):
+                try:
+                    init_architecture.main()
+                except SystemExit:
+                    pass
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            code = arch.cmd_stage_enter(
+                SimpleNamespace(path=str(Path(temp_dir) / ".plan"), layer="L1")
+            )
+            output = mock_stdout.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("Stage entry allowed: L1", output)
+
+    def test_stage_enter_blocks_when_previous_stage_pending(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        with patch.object(sys, "argv", ["init_architecture.py", "--path", temp_dir]):
+            with patch("sys.stdout", new=StringIO()):
+                try:
+                    init_architecture.main()
+                except SystemExit:
+                    pass
+        with patch("sys.stdout", new=StringIO()) as mock_stdout:
+            code = arch.cmd_stage_enter(
+                SimpleNamespace(path=str(Path(temp_dir) / ".plan"), layer="L2")
+            )
+            output = mock_stdout.getvalue()
+        self.assertEqual(code, 1)
+        self.assertIn("BLOCKED: Cannot enter L2 yet.", output)
+        self.assertIn("Run:", output)
+
+    def test_semantic_scaffold_and_aggregate(self):
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        with patch.object(sys, "argv", ["init_architecture.py", "--path", temp_dir]):
+            with patch("sys.stdout", new=StringIO()):
+                try:
+                    init_architecture.main()
+                except SystemExit:
+                    pass
+        plan_dir = Path(temp_dir) / ".plan"
+
+        with patch("sys.stdout", new=StringIO()):
+            code = arch.cmd_semantic_scaffold(
+                SimpleNamespace(path=str(plan_dir), force=False)
+            )
+        self.assertEqual(code, 0)
+
+        shard_dir = plan_dir / "semantic-shards"
+        for shard in ["A", "B", "C", "D", "E"]:
+            payload = {
+                "shard": shard,
+                "status": "pass",
+                "executor": f"subagent-{shard.lower()}",
+                "evidence_refs": [f"{shard}-evidence"],
+                "findings": [],
+                "notes": "",
+            }
+            (shard_dir / f"shard-{shard}.json").write_text(json.dumps(payload))
+
+        with patch("sys.stdout", new=StringIO()):
+            code = arch.cmd_semantic_aggregate(
+                SimpleNamespace(path=str(plan_dir), shard_dir=None, output=None)
+            )
+        self.assertEqual(code, 0)
+        report = json.loads((plan_dir / "semantic-validation.json").read_text())
+        self.assertIn("shards", report)
+        self.assertIsInstance(report["shards"], dict)
+        self.assertIn("A", report["shards"])
 
 
 # =============================================================================

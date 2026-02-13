@@ -13,6 +13,7 @@ Canonical agent docs:
 Operating rule:
 - Use `python scripts/arch.py ...` only.
 - Do not manually edit `.plan/gates.yml`.
+- Gate each layer entry with `python scripts/arch.py stage enter --path .plan --layer <Lx>`.
 
 Supporting guides:
 - `layer-guide.md` — definitions of done per layer

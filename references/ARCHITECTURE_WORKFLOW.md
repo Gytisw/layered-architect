@@ -42,6 +42,11 @@ python scripts/arch.py init --path . --mode <strict|soft> --question-depth <mini
 
 3. Draft layers in order (L0/L1/L2/L3/L4/L5 as required)
 
+Before drafting each layer:
+```bash
+python scripts/arch.py stage enter --path .plan --layer <L0|L1|L2|L3|L4|L5>
+```
+
 4. After each file edit
 ```bash
 python scripts/arch.py status --path .plan
@@ -71,6 +76,9 @@ python scripts/arch.py deps --path .plan --strict
 
 8. Semantic gate (required)
 ```bash
+python scripts/arch.py semantic scaffold --path .plan
+# run one validator/subagent per required shard
+python scripts/arch.py semantic aggregate --path .plan
 python scripts/arch.py semantic validate --path .plan --strict
 python scripts/arch.py semantic complete --path .plan --completed-by <name>
 ```

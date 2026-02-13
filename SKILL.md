@@ -31,8 +31,12 @@ Do not run legacy scripts directly.
 4. After each file edit:
    - `python scripts/arch.py status --path .plan`
    - `python scripts/arch.py next --path .plan`
-5. Validate before progression:
+5. Before drafting each layer:
+   - `python scripts/arch.py stage enter --path .plan --layer <L0|L1|L2|L3|L4|L5>`
+6. Validate before progression:
    - `python scripts/arch.py validate --path .plan --strict`
+
+If strict validation fails on a gate blocker, do not draft deeper layers. Execute only the blocker fix command.
 
 ## Gate Operations (CLI Authority)
 
@@ -62,6 +66,9 @@ If runtime cannot execute web/subagent research, request user-provided evidence 
 ## Semantic Gate
 
 Run semantic validation after scripted validation:
+- `python scripts/arch.py semantic scaffold --path .plan`
+- execute one validator/subagent per required shard
+- `python scripts/arch.py semantic aggregate --path .plan`
 - `python scripts/arch.py semantic validate --path .plan --strict`
 
 Then mark completion via CLI:

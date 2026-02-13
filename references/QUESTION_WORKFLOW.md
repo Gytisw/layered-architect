@@ -17,6 +17,8 @@ Use it together with `references/ARCHITECTURE_WORKFLOW.md`.
 - After any file edit, run:
   - `python scripts/arch.py status --path .plan`
   - `python scripts/arch.py next --path .plan`
+- Before drafting the next layer, require:
+  - `python scripts/arch.py stage enter --path .plan --layer <target>`
 
 ## Stage Question Coverage
 

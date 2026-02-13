@@ -148,7 +148,7 @@ def auto_layer_triggers(plan_dir: Path) -> Dict[str, Dict[str, str | bool]]:
         l0_reason = "L0 document already exists"
     elif l1_file.exists():
         text = l1_file.read_text(encoding="utf-8").lower()
-        markers = ["open question", "unknown", "unclear", "tbd", "assumption"]
+        markers = ["open question", "unknown", "unclear", "tbd"]
         hits = [m for m in markers if m in text]
         if hits:
             l0_required = True
@@ -344,6 +344,19 @@ def constraints_registry_nonempty(plan_dir: Path) -> bool:
     constraints = data.get("constraints", [])
     return isinstance(constraints, list) and len(constraints) > 0
 
+
+def semantic_required_shards(plan_dir: Path) -> List[str]:
+    required = ["A", "B", "C", "D", "E"]
+    if (plan_dir / "L0-problem-framing.md").exists():
+        required.append("F")
+    if (plan_dir / "L5-operability-readiness.md").exists():
+        required.append("G")
+    return required
+
+
+def semantic_shard_dir(plan_dir: Path) -> Path:
+    return plan_dir / "semantic-shards"
+
 def cmd_init(args) -> int:
     argv = ["init_architecture.py"]
     if args.here:
@@ -526,6 +539,97 @@ def cmd_semantic_validate(args) -> int:
     if getattr(args, "task_capable", False):
         argv.append("--task-capable")
     return run_main(validate_semantic_report.main, argv)
+
+
+def cmd_semantic_scaffold(args) -> int:
+    plan_dir, _ = resolve_plan_and_root(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print("No .plan directory found.")
+        return 1
+    shard_dir = semantic_shard_dir(plan_dir)
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    required = semantic_required_shards(plan_dir)
+    for shard in required:
+        shard_file = shard_dir / f"shard-{shard}.json"
+        if shard_file.exists() and not args.force:
+            continue
+        payload = {
+            "shard": shard,
+            "status": "warn",
+            "executor": "",
+            "evidence_refs": [],
+            "findings": [],
+            "notes": "",
+        }
+        shard_file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"Semantic shard scaffold ready: {shard_dir}")
+    print("Required shards: " + ", ".join(required))
+    print("Fill one shard per validator/subagent, then run:")
+    print(f"  python scripts/arch.py semantic aggregate --path {plan_dir}")
+    return 0
+
+
+def cmd_semantic_aggregate(args) -> int:
+    plan_dir, _ = resolve_plan_and_root(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print("No .plan directory found.")
+        return 1
+    shard_dir = Path(args.shard_dir).expanduser().resolve() if args.shard_dir else semantic_shard_dir(plan_dir)
+    if not shard_dir.exists():
+        print(f"Semantic shard directory not found: {shard_dir}")
+        print(f"Run: python scripts/arch.py semantic scaffold --path {plan_dir}")
+        return 1
+
+    required = semantic_required_shards(plan_dir)
+    shards_payload: Dict[str, Dict] = {}
+    missing: List[str] = []
+    for shard in required:
+        shard_file = shard_dir / f"shard-{shard}.json"
+        if not shard_file.exists():
+            missing.append(shard)
+            continue
+        try:
+            data = json.loads(shard_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"Failed to parse {shard_file}: {exc}")
+            return 1
+        if not isinstance(data, dict):
+            print(f"Invalid shard payload in {shard_file} (must be object)")
+            return 1
+        status = str(data.get("status", "")).strip().lower()
+        if status not in {"pass", "warn", "fail"}:
+            print(f"Invalid status in {shard_file}: {status}")
+            return 1
+        shards_payload[shard] = {
+            "status": status,
+            "executor": str(data.get("executor", "")).strip(),
+            "evidence_refs": data.get("evidence_refs", []),
+            "findings": data.get("findings", []),
+            "notes": str(data.get("notes", "")).strip(),
+        }
+
+    if missing:
+        print("Missing shard files: " + ", ".join(missing))
+        return 1
+
+    severity_rank = {"pass": 0, "warn": 1, "fail": 2}
+    overall = "pass"
+    for shard in required:
+        if severity_rank[shards_payload[shard]["status"]] > severity_rank[overall]:
+            overall = shards_payload[shard]["status"]
+
+    aggregate = {
+        "version": "1.0.0",
+        "generated_at": now_utc_iso(),
+        "overall_status": overall,
+        "required_shards": required,
+        "shards": shards_payload,
+    }
+    output = Path(args.output).expanduser().resolve() if args.output else (plan_dir / "semantic-validation.json")
+    output.write_text(json.dumps(aggregate, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote semantic aggregate report: {output}")
+    print(f"Run: python scripts/arch.py semantic validate --path {plan_dir} --strict")
+    return 0
 
 
 def cmd_gate_sync(args) -> int:
@@ -852,6 +956,69 @@ def cmd_next(args) -> int:
     return 0
 
 
+def _action_stage_hint(action: str) -> str:
+    action_l = action.lower()
+    if "complete l0" in action_l:
+        return "L0"
+    if "complete l1" in action_l:
+        return "L1"
+    if "complete l2" in action_l:
+        return "L2"
+    if "complete l3" in action_l:
+        return "L3"
+    if "complete l4" in action_l:
+        return "L4"
+    if "complete l5" in action_l:
+        return "L5"
+    if "constraint" in action_l or "research" in action_l:
+        return "PRE_L2_GATE"
+    if "dependenc" in action_l:
+        return "PRE_L3_GATE"
+    if "semantic" in action_l:
+        return "POST_LAYER_GATE"
+    if "validation stamp" in action_l or "final strict validation" in action_l:
+        return "FINAL_GATE"
+    return "UNKNOWN"
+
+
+def cmd_stage_enter(args) -> int:
+    plan_dir, _ = resolve_plan_and_root(args.path)
+    if not plan_dir or not plan_dir.exists():
+        print("No .plan directory found.")
+        print("Next step: python scripts/arch.py init --path .")
+        return 1
+    gates, gate_errors = load_gates(plan_dir)
+    action, command = next_required_action(plan_dir, gates, gate_errors)
+    hint = _action_stage_hint(action)
+    target = args.layer.upper()
+
+    if target == "L1":
+        triggers = auto_layer_triggers(plan_dir)
+        if bool(triggers["l0"]["required"]) and not (plan_dir / "L0-problem-framing.md").exists():
+            print("BLOCKED: Cannot enter L1 before required L0 is complete.")
+            print(f"Reason: {triggers['l0']['reason']}")
+            print("Run: python scripts/arch.py stage enter --path .plan --layer L0")
+            return 1
+        print("Stage entry allowed: L1")
+        print("Proceed with drafting L1, then run:")
+        print("  python scripts/arch.py status --path .plan")
+        print("  python scripts/arch.py next --path .plan")
+        return 0
+
+    if hint == target:
+        print(f"Stage entry allowed: {target}")
+        print("Proceed with drafting that layer, then run:")
+        print("  python scripts/arch.py status --path .plan")
+        print("  python scripts/arch.py next --path .plan")
+        return 0
+
+    print(f"BLOCKED: Cannot enter {target} yet.")
+    print(f"Current required action: {action}")
+    print(f"Blocking stage hint: {hint}")
+    print(f"Run: {command}")
+    return 1
+
+
 def cmd_run(args) -> int:
     plan_dir, _ = resolve_plan_and_root(args.path)
     if not plan_dir or not plan_dir.exists():
@@ -1154,6 +1321,15 @@ def main() -> int:
 
     p_semantic = sub.add_parser("semantic", help="Semantic validation operations")
     semantic_sub = p_semantic.add_subparsers(dest="semantic_cmd", required=True)
+    p_semantic_scaffold = semantic_sub.add_parser("scaffold", help="Create semantic shard templates")
+    p_semantic_scaffold.add_argument("--path", help="Path to .plan")
+    p_semantic_scaffold.add_argument("--force", action="store_true", help="Overwrite existing shard files")
+    p_semantic_scaffold.set_defaults(func=cmd_semantic_scaffold)
+    p_semantic_aggregate = semantic_sub.add_parser("aggregate", help="Aggregate shard files into semantic-validation.json")
+    p_semantic_aggregate.add_argument("--path", help="Path to .plan")
+    p_semantic_aggregate.add_argument("--shard-dir", help="Path to semantic shard directory")
+    p_semantic_aggregate.add_argument("--output", help="Output semantic validation JSON")
+    p_semantic_aggregate.set_defaults(func=cmd_semantic_aggregate)
     p_semantic_validate = semantic_sub.add_parser("validate", help="Validate semantic report shards")
     p_semantic_validate.add_argument("--path", help="Path to .plan")
     p_semantic_validate.add_argument("--strict", action="store_true")
@@ -1189,6 +1365,13 @@ def main() -> int:
     p_run = sub.add_parser("run", help="Guided workflow runner")
     p_run.add_argument("--path", help="Path to .plan or project")
     p_run.set_defaults(func=cmd_run)
+
+    p_stage = sub.add_parser("stage", help="Deterministic stage entry gate")
+    stage_sub = p_stage.add_subparsers(dest="stage_cmd", required=True)
+    p_stage_enter = stage_sub.add_parser("enter", help="Check whether a layer can be entered")
+    p_stage_enter.add_argument("--path", help="Path to .plan or project")
+    p_stage_enter.add_argument("--layer", required=True, choices=["L0", "L1", "L2", "L3", "L4", "L5"])
+    p_stage_enter.set_defaults(func=cmd_stage_enter)
 
     args = parser.parse_args()
     return args.func(args)

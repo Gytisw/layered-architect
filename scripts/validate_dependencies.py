@@ -37,6 +37,24 @@ def parse_nodes(nodes_raw) -> List[str]:
     return [n for n in nodes if n]
 
 
+def parse_node_identities(nodes_raw) -> Set[str]:
+    identities: Set[str] = set()
+    if not isinstance(nodes_raw, list):
+        return identities
+    for item in nodes_raw:
+        if isinstance(item, str):
+            if item.strip():
+                identities.add(item.strip())
+            continue
+        if not isinstance(item, dict):
+            continue
+        for key in ("name", "id", "module"):
+            value = item.get(key)
+            if value and str(value).strip():
+                identities.add(str(value).strip())
+    return identities
+
+
 def parse_edges(edges_raw) -> List[Tuple[str, str]]:
     edges: List[Tuple[str, str]] = []
     if isinstance(edges_raw, list):
@@ -82,6 +100,14 @@ def detect_cycles(nodes: List[str], edges: List[Tuple[str, str]]) -> List[List[s
     return cycles
 
 
+def canonical_component_name(text: str) -> str:
+    cleaned = normalize(text)
+    tokens = [t for t in cleaned.split() if t]
+    stop_words = {"module", "service", "layer", "component", "subsystem"}
+    tokens = [t for t in tokens if t not in stop_words]
+    return " ".join(tokens)
+
+
 def extract_l3_modules(plan_dir: Path) -> Set[str]:
     l3_file = plan_dir / "L3-component-design.md"
     if not l3_file.exists():
@@ -89,7 +115,7 @@ def extract_l3_modules(plan_dir: Path) -> Set[str]:
     content = l3_file.read_text(encoding="utf-8")
     modules: Set[str] = set()
 
-    # Collect bullets and subheadings under "Modules" section only.
+    # Collect only explicit module headers under "Modules" section.
     in_modules = False
     header_pattern = re.compile(r"^(#{2,4})\s+(.+)$")
     for line in content.splitlines():
@@ -101,19 +127,20 @@ def extract_l3_modules(plan_dir: Path) -> Set[str]:
             if level == 2:
                 in_modules = title in {"modules", "module specifications", "components"}
                 continue
-            if in_modules and level in {3, 4}:
+            if in_modules and level == 3:
                 name = match.group(2).strip()
-                if name.lower() not in {"responsibilities", "public interface", "internal structure"}:
+                name_l = name.lower()
+                if name_l not in {"responsibilities", "public interface", "internal structure", "overview"}:
                     modules.add(name)
+                continue
+            if in_modules and level == 4:
+                name = match.group(2).strip()
+                if re.match(r"(?i)^module\s*:", name):
+                    modules.add(re.sub(r"(?i)^module\s*:\s*", "", name).strip())
                 continue
             if in_modules and level == 2:
                 in_modules = False
             continue
-        if in_modules and re.match(r"^[-*]\s+", line.strip()):
-            name = re.sub(r"^[-*]\s+", "", line.strip())
-            name = re.sub(r"\*\*|\*", "", name).strip()
-            if name:
-                modules.add(name)
 
     return modules
 
@@ -182,7 +209,8 @@ def validate_dependencies(
     if status != "complete":
         errors.append("dependencies.yml status is not 'complete'")
 
-    nodes = parse_nodes(data.get("nodes", []))
+    nodes_raw = data.get("nodes", [])
+    nodes = parse_nodes(nodes_raw)
     edges = parse_edges(data.get("edges", []))
 
     if not nodes:
@@ -208,14 +236,19 @@ def validate_dependencies(
 
     l3_modules = extract_l3_modules(plan_dir)
     if l3_modules:
-        normalized_nodes = {normalize(n) for n in nodes}
-        normalized_modules = {normalize(m) for m in l3_modules}
-        missing = normalized_modules - normalized_nodes
-        extra = normalized_nodes - normalized_modules
+        identities = parse_node_identities(nodes_raw)
+        normalized_nodes = {canonical_component_name(n) for n in identities if canonical_component_name(n)}
+        normalized_modules = {canonical_component_name(m) for m in l3_modules if canonical_component_name(m)}
+        missing = sorted(normalized_modules - normalized_nodes)
+        extra = sorted(normalized_nodes - normalized_modules)
         if missing:
-            warnings.append("Dependencies graph missing L3 modules: " + ", ".join(sorted(missing)))
+            preview = ", ".join(missing[:8])
+            suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+            warnings.append("Dependencies graph missing L3 modules: " + preview + suffix)
         if extra:
-            warnings.append("Dependencies graph has nodes not in L3 modules: " + ", ".join(sorted(extra)))
+            preview = ", ".join(extra[:8])
+            suffix = "" if len(extra) <= 8 else f" (+{len(extra) - 8} more)"
+            warnings.append("Dependencies graph has nodes not in L3 modules: " + preview + suffix)
         if len(nodes) > 1 and not edges:
             warnings.append("Multiple nodes but no edges defined in dependencies.yml")
 

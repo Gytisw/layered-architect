@@ -189,6 +189,202 @@ def main() -> int:
                 fix_command="python scripts/arch.py status --path .plan",
             )
 
+    def normalize_header(text: str) -> str:
+        cleaned = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+        return " ".join(cleaned.split())
+
+    def has_external_deps_section() -> bool:
+        l2_file = plan_dir / "L2-system-architecture.md"
+        if not l2_file.exists():
+            return False
+        content = l2_file.read_text(encoding="utf-8")
+        header_pattern = re.compile(r"^#{2,4}\s+(.+)$")
+        targets = {
+            normalize_header("External Dependencies"),
+            normalize_header("Dependencies"),
+            normalize_header("Third-Party Dependencies"),
+        }
+        section_lines: List[str] = []
+        in_target = False
+        for line in content.splitlines():
+            match = header_pattern.match(line.strip())
+            if match:
+                title = normalize_header(match.group(1))
+                if in_target:
+                    break
+                in_target = title in targets
+                continue
+            if in_target:
+                section_lines.append(line)
+        if not section_lines:
+            return False
+        generic_tokens = {
+            "dependency",
+            "dependencies",
+            "purpose",
+            "version",
+            "constraint",
+            "constraints",
+            "optional",
+            "required",
+            "legacy",
+            "n",
+            "a",
+        }
+        for raw in section_lines:
+            line = raw.strip()
+            if not line or line.startswith("```"):
+                continue
+            if line.startswith("|") and re.match(r"^\|\s*-+\s*\|", line):
+                continue
+            normalized = re.sub(r"^[-*]\s+|^\d+\.\s+|^\|\s*|\s*\|$", "", line)
+            normalized = re.sub(r"\*\*|`", "", normalized).strip()
+            lowered = normalized.lower()
+            if not lowered:
+                continue
+            if lowered in {"none", "n/a", "na", "tbd", "todo"}:
+                continue
+            if "[" in lowered and "]" in lowered:
+                continue
+            if lowered.startswith("if legacy"):
+                continue
+            tokens = [t for t in re.split(r"[^a-z0-9]+", lowered) if t]
+            meaningful = [t for t in tokens if t not in generic_tokens and len(t) > 2]
+            if meaningful:
+                return True
+        return False
+
+    def dependencies_has_external_nodes() -> bool:
+        dep_file = plan_dir / "dependencies.yml"
+        if not dep_file.exists() or yaml is None:
+            return False
+        try:
+            data = yaml.safe_load(dep_file.read_text()) or {}
+        except Exception:
+            return False
+        nodes = data.get("nodes", [])
+        for node in nodes:
+            if isinstance(node, dict):
+                node_type = str(node.get("type", "")).strip().lower()
+                if node_type in {"external", "infrastructure", "vendor", "third_party", "third-party"}:
+                    return True
+        return False
+
+    def find_report(basename: str) -> Path | None:
+        for ext in (".md", ".json"):
+            candidate = plan_dir / f"{basename}{ext}"
+            if candidate.exists():
+                return candidate
+        return None
+
+    gates_research_required = bool(gates.get("research_required", False))
+    research_required = (
+        gates_research_required or has_external_deps_section() or dependencies_has_external_nodes()
+    )
+    research_approved = bool(gates.get("research_approved", False))
+    research_file = find_report("research")
+    research_evidence_file = plan_dir / "research.evidence.json"
+
+    if args.strict and research_required:
+        early_messages: List[str] = []
+        if not research_approved:
+            early_messages.append("research_approved is false in .plan/gates.yml")
+            add_generic_finding(
+                finding_id="VAL-RESEARCH-APPROVAL",
+                severity="error",
+                layer="GLOBAL",
+                file=plan_dir / "gates.yml",
+                section="Research Gate",
+                message="Research is required but not approved in .plan/gates.yml",
+                why_blocking="Strict mode requires research approval before downstream architecture progression.",
+                fix_hint="Request user approval and record it through arch.py research approve.",
+                fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+            )
+        if research_file is None:
+            early_messages.append("Research log required (.plan/research.md or .json)")
+            add_generic_finding(
+                finding_id="VAL-RESEARCH-LOG",
+                severity="error",
+                layer="GLOBAL",
+                file=plan_dir / "research.md",
+                section="Research Gate",
+                message="Research log required (.plan/research.md or .json)",
+                why_blocking="Strict mode requires explicit research traceability before architecture progression.",
+                fix_hint="Create a research log tied to concrete sources and decisions.",
+                fix_command=f"python scripts/arch.py status --path {plan_dir}",
+            )
+        if not research_evidence_file.exists():
+            early_messages.append("Research evidence required (.plan/research.evidence.json)")
+            add_generic_finding(
+                finding_id="VAL-RESEARCH-EVIDENCE-MISSING",
+                severity="error",
+                layer="GLOBAL",
+                file=research_evidence_file,
+                section="Research Gate",
+                message="Research evidence required (.plan/research.evidence.json)",
+                why_blocking="Strict mode forbids memory-only research summaries.",
+                fix_hint="Create research.evidence.json with source, claim mapping, and executor metadata.",
+                fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+            )
+        elif research_approved:
+            early_warnings, early_errors = validate_research_evidence.validate_evidence_file(
+                plan_dir, evidence_path=research_evidence_file, strict=True
+            )
+            for idx, err in enumerate(early_errors, start=1):
+                early_messages.append(err)
+                add_generic_finding(
+                    finding_id=f"VAL-RESEARCH-EVIDENCE-ERROR-{idx:03d}",
+                    severity="error",
+                    layer="GLOBAL",
+                    file=research_evidence_file,
+                    section="Research Evidence",
+                    message=err,
+                    why_blocking="Research evidence quality requirements are not satisfied.",
+                    fix_hint="Fix evidence schema and claim/source traceability.",
+                    fix_command=f"python scripts/arch.py research approve --path {plan_dir} --approved-by <name> --confirm-user-approval",
+                )
+        if early_messages:
+            summary = {
+                "overall": "FAIL",
+                "mode": "strict",
+                "blocking_warnings": False,
+                "warnings": 0,
+                "errors": len([f for f in findings_all if f.get("severity") == "error"]),
+                "ready_for_execution": False,
+                "findings": findings_all,
+                "blocking_findings": blocking_findings(findings_all, strict=True),
+                "next_fix_command": next_fix_command(findings_all, strict=True),
+                "layers": {},
+                "gates": results.get("gates", {}),
+                "constraints": {},
+                "dependencies": {},
+                "consistency": {},
+                "lint": {},
+                "semantic_validation": {},
+                "research": {
+                    "status": "ERROR",
+                    "required": True,
+                    "approved": research_approved,
+                    "file": research_file.name if research_file else None,
+                    "evidence_file": research_evidence_file.name if research_evidence_file.exists() else None,
+                    "messages": early_messages,
+                },
+            }
+            if args.format == "json":
+                print(json.dumps(summary, indent=2))
+            else:
+                print("Validation Summary")
+                print("- Overall: FAIL")
+                print("- Blocking Findings:")
+                for finding in summary["blocking_findings"]:
+                    print(
+                        f"  [{finding.get('id')}] {finding.get('message')} | "
+                        f"fix={finding.get('fix_command')}"
+                    )
+                print(f"- Next Fix Command: {summary['next_fix_command']}")
+                print("FAIL: Strict mode blocked by research gate.")
+            return 1
+
     layers = ["L0", "L1", "L2", "L3", "L4", "L5"]
     for layer in layers:
         optional_missing_ok = layer in {"L0", "L5"}
@@ -399,99 +595,6 @@ def main() -> int:
     }
 
     # Semantic validation + research gates
-    def find_report(basename: str) -> Path | None:
-        for ext in (".md", ".json"):
-            candidate = plan_dir / f"{basename}{ext}"
-            if candidate.exists():
-                return candidate
-        return None
-
-    def normalize_header(text: str) -> str:
-        cleaned = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
-        return " ".join(cleaned.split())
-
-    def has_external_deps_section() -> bool:
-        l2_file = plan_dir / "L2-system-architecture.md"
-        if not l2_file.exists():
-            return False
-        content = l2_file.read_text(encoding="utf-8")
-        header_pattern = re.compile(r"^#{2,4}\s+(.+)$")
-        targets = {
-            normalize_header("External Dependencies"),
-            normalize_header("Dependencies"),
-            normalize_header("Third-Party Dependencies"),
-        }
-        section_lines: List[str] = []
-        in_target = False
-        for line in content.splitlines():
-            match = header_pattern.match(line.strip())
-            if match:
-                title = normalize_header(match.group(1))
-                if in_target:
-                    break
-                in_target = title in targets
-                continue
-            if in_target:
-                section_lines.append(line)
-        if not section_lines:
-            return False
-        generic_tokens = {
-            "dependency",
-            "dependencies",
-            "purpose",
-            "version",
-            "constraint",
-            "constraints",
-            "optional",
-            "required",
-            "legacy",
-            "n",
-            "a",
-        }
-        for raw in section_lines:
-            line = raw.strip()
-            if not line or line.startswith("```"):
-                continue
-            if line.startswith("|") and re.match(r"^\|\s*-+\s*\|", line):
-                continue
-            normalized = re.sub(r"^[-*]\s+|^\d+\.\s+|^\|\s*|\s*\|$", "", line)
-            normalized = re.sub(r"\*\*|`", "", normalized).strip()
-            lowered = normalized.lower()
-            if not lowered:
-                continue
-            if lowered in {"none", "n/a", "na", "tbd", "todo"}:
-                continue
-            if "[" in lowered and "]" in lowered:
-                continue
-            if lowered.startswith("if legacy"):
-                continue
-            tokens = [t for t in re.split(r"[^a-z0-9]+", lowered) if t]
-            meaningful = [t for t in tokens if t not in generic_tokens and len(t) > 2]
-            if meaningful:
-                return True
-        return False
-
-    def dependencies_has_external_nodes() -> bool:
-        dep_file = plan_dir / "dependencies.yml"
-        if not dep_file.exists() or yaml is None:
-            return False
-        try:
-            data = yaml.safe_load(dep_file.read_text()) or {}
-        except Exception:
-            return False
-        nodes = data.get("nodes", [])
-        for node in nodes:
-            if isinstance(node, dict):
-                node_type = str(node.get("type", "")).strip().lower()
-                if node_type in {"external", "infrastructure", "vendor", "third_party", "third-party"}:
-                    return True
-        return False
-
-    gates_research_required = bool(gates.get("research_required", False))
-    research_required = (
-        gates_research_required or has_external_deps_section() or dependencies_has_external_nodes()
-    )
-    research_approved = bool(gates.get("research_approved", False))
     semantic_required = bool(gates.get("semantic_required", True)) if gates else True
     semantic_completed = bool(gates.get("semantic_completed", False))
 
@@ -558,8 +661,6 @@ def main() -> int:
         results["semantic_validation"] = {"status": "SKIP", "required": False}
 
     # Research log gate
-    research_file = find_report("research")
-    research_evidence_file = plan_dir / "research.evidence.json"
     research_status = "OK"
     research_messages: List[str] = []
     if research_required and not research_approved:
